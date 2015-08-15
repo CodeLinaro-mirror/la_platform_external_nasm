@@ -1,0 +1,23 @@
+Nasm
+
+Package origin URL:
+-------------------
+
+http://www.nasm.us/
+
+
+Version:
+--------
+
+http://www.nasm.us/pub/nasm/releasebuilds/2.11.08/nasm-2.11.08.tar.gz
+
+$ md5sum nasm-2.11.08.tar.gz 
+6f94c4d8945e9fa6c0790a2e485090d7  nasm-2.11.08.tar.gz
+
+
+Downloading and unpacking history:
+----------------------------------
+
+Wed Aug  5 20:41:03 UTC 2015:
+wget http://www.nasm.us/pub/nasm/releasebuilds/2.11.08/nasm-2.11.08.tar.gz
+tar xzf nasm-2.11.08.tar.gz
