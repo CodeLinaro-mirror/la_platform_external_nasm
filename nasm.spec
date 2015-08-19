@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-%define nasm_version 2.11.08
+%define nasm_version 2.11.09rc1
 Summary: The Netwide Assembler, a portable x86 assembler with Intel-like syntax
 Name: nasm
-Version: 2.11.08
+Version: 2.11.08.91
 Release: 1
 License: BSD
 Group: Development/Languages

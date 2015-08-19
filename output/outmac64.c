@@ -304,7 +304,7 @@ static struct symbol *get_closest_section_symbol_by_offset(uint8_t fileindex, in
 
     for (sym = syms; sym; sym = sym->next) {
         if ((sym->sect != NO_SECT) && (sym->sect == fileindex)) {
-            if ((int64_t)sym->value >= offset)
+            if ((int64_t)sym->value > offset)
                 break;
             nearest = sym;
         }
@@ -511,6 +511,8 @@ static void macho_output(int32_t secto, const void *data,
         return;
     }
 
+    memset(mydata, 0, sizeof(mydata));
+
     switch (type) {
     case OUT_RESERVE:
         if (s != sbss) {
@@ -598,7 +600,7 @@ static void macho_output(int32_t secto, const void *data,
                   " section base references");
         } else {
 			if (wrt == NO_SEG) {
-				*mydata -= add_reloc(s, section, 1, 4, *(int64_t *)mydata);				// X86_64_RELOC_SIGNED/BRANCH
+				*(int64_t *)mydata -= add_reloc(s, section, 1, 4, *(int64_t *)mydata);				// X86_64_RELOC_SIGNED/BRANCH
 			} else if (wrt == macho_gotpcrel_sect) {
 				if (s->data->datalen > 1) {
 					saa_fread(s->data, s->data->datalen-2, &gotload, 1);				// Retrieve Instruction Opcode
@@ -606,9 +608,9 @@ static void macho_output(int32_t secto, const void *data,
 					gotload = 0;
 				}
 				if (gotload == 0x8B) {													// Check for MOVQ Opcode
-					*mydata -= add_reloc(s, section, 4, 4, *(int64_t *)mydata);			// X86_64_GOT_LOAD (MOVQ load)
+					*(int64_t *)mydata -= add_reloc(s, section, 4, 4, *(int64_t *)mydata);			// X86_64_GOT_LOAD (MOVQ load)
 				} else {
-					*mydata -= add_reloc(s, section, 3, 4, *(int64_t *)mydata);			// X86_64_GOT
+					*(int64_t *)mydata -= add_reloc(s, section, 3, 4, *(int64_t *)mydata);			// X86_64_GOT
 				}
 			} else {
 				nasm_error(ERR_NONFATAL, "Mach-O format does not support"
