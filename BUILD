@@ -1,6 +1,24 @@
-licenses(["notice"])
+load("@rules_license//rules:license.bzl", "license")
+load("@rules_license//rules:license_kind.bzl", "license_kind")
 
-exports_files(["LICENSE"])
+package(
+    default_applicable_licenses = [":license"],
+    default_visibility = ["//visibility:public"],
+)
+
+license(
+    name = "license",
+    license_kinds = [
+        ":SPDX-license-identifier-BSD-2.0",
+    ],
+    visibility = [":__subpackages__"],
+)
+
+license_kind(
+    name = "SPDX-license-identifier-BSD-2.0",
+    conditions = ["notice"],
+    url = "https://spdx.org/licenses/BSD-2-Clause.html",
+)
 
 INCLUDES = [
     ".",
@@ -13,6 +31,7 @@ INCLUDES = [
 
 COPTS = select({
     ":windows": [],
+    "@platforms//os:windows": [],
     "//conditions:default": [
         "-w",
         "-DHAVE_CONFIG_H",
@@ -114,6 +133,7 @@ cc_library(
     ]),
     copts = COPTS,
     includes = INCLUDES,
+    visibility = ["//visibility:private"],
 )
 
 cc_binary(
@@ -124,7 +144,6 @@ cc_binary(
     ],
     copts = COPTS,
     includes = INCLUDES,
-    visibility = ["@libjpeg_turbo//:__pkg__"],
     deps = [
         ":nasm_lib",
     ],
