@@ -1,3 +1,59 @@
+# Copyright 2024 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Bazel Rules for NASM
+
+This file defines rules for using the NASM assembler.  It exposes a `nasm`
+binary and library targets for building NASM itself, plus Starlark rules for
+building with it.
+
+The main rules for users are defined in `defs.bzl`:
+
+- `nasm_compile`: Compiles `.asm` files into object files.
+- `nasm_library`: Creates a static library from a collection of `.asm` files.
+
+
+Example:
+
+```starlark
+load("@nasm/bazel:defs.bzl", "nasm_compile", "nasm_library")
+
+nasm_compile(
+    name = "my_asm_object",
+    src = "my_asm_code.asm",
+    out = "my_asm_code.o",
+    output_format = "elf64",  # Or "win64", "macho64"
+)
+
+nasm_library(
+    name = "my_asm_library",
+    srcs = ["one.asm", "two.asm"],
+    output_format = "elf64",
+)
+
+cc_binary(
+    name = "my_program",
+    srcs = ["main.c"],
+    deps = [":my_asm_library"],
+)
+```
+
+Library targets:
+
+- nasm_lib: A cc_library containing the NASM code.
+- nasm: A cc_binary that builds the nasm assembler.
+"""
+
 load("@rules_license//rules:license.bzl", "license")
 load("@rules_license//rules:license_kind.bzl", "license_kind")
 
@@ -21,7 +77,6 @@ license_kind(
 )
 
 INCLUDES = [
-    ".",
     "include",
     "x86",
     "asm",
