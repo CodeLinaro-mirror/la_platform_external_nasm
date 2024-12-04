@@ -26,7 +26,7 @@ The main rules for users are defined in `defs.bzl`:
 Example:
 
 ```starlark
-load("@nasm/bazel:defs.bzl", "nasm_compile", "nasm_library")
+load("@nasm//:bazel/defs.bzl", "nasm_library", "nasm_compile)
 
 nasm_compile(
     name = "my_asm_object",
@@ -38,7 +38,7 @@ nasm_compile(
 nasm_library(
     name = "my_asm_library",
     srcs = ["one.asm", "two.asm"],
-    output_format = "elf64",
+    output_format = "win64",
 )
 
 cc_binary(
