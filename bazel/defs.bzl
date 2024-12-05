@@ -59,6 +59,7 @@ def _invoke_nasm(ctx, input_file, output_file, output_format, copts, includes):
         fail("Invalid output_format: {}. Must be one of {}".format(output_format, valid_formats))
 
     args = [
+        "--reproducible",
         "-f",
         output_format,
         input_file.path,
