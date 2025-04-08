@@ -47,6 +47,10 @@ build/Release+Asserts/bin) then do the following:
   CC=clang CXX=clang++ CFLAGS="-std=c11 -Werror" ./autogen.sh
   CC=clang CXX=clang++ CFLAGS="-std=c11 -Werror" ./configure
   make perlreq
+
+  # Note: If make perlreq says everything is up-to-date, you may need to run
+  # "make spotless" and then rerun the autogen/configure/make steps above.
+
   ./generate_nasm_sources.py
   git add <any new .c/.h files which show up>
 
