@@ -35,10 +35,11 @@ build/Release+Asserts/bin) then do the following:
 
   # Maybe use git mergetool to resolve any conflicts with local patches.
 
-  # ***DO NOT USE*** git cl upload for this part or you will spam every author
-  # who committed something upstream with a Gerrit issue... :O You must also
-  # have the correct Gerrit permissions from one of the OWNERS to do this.
-  git push origin master
+  # You must be a member of the nasm-owners Gerrit group to do the next step.
+  # You may need to follow go/looker-gob-dev-guide#set-up-change-id-hook to
+  # setup a Change-Id for the pushed change. You'll get a warning during push
+  # if you don't have the hook setup.
+  git push origin HEAD:refs/for/main
 
   # You can safely use git cl upload for all of your own modifications past this
   # point; I.e., once you have pushed all the commits from the git merge.
@@ -74,4 +75,3 @@ You can stop after configure. Then just follow the copy instructions above.
 
 --[ TODOS ] ------------------
 None at this time.
-
