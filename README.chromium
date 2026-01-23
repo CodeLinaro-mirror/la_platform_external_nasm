@@ -6,6 +6,7 @@ CPEPrefix: cpe:/a:nasm:netwide_assembler:2.16.03
 License: BSD-2-Clause
 License File: LICENSE
 Security Critical: no
+Update Mechanism: Manual
 Shipped: no
 Source: https://github.com/netwide-assembler/nasm
 
