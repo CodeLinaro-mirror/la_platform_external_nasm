@@ -2534,7 +2534,7 @@ bool macho_set_min_os(const char *str) {
     }
 
     /* Mimic clang's target triple */
-    int platform = PLATFORM_INVALID;
+    int platform = PLATFORM_UNKNOWN;
     if (strstr(platform_ver, "macos") == platform_ver) {
         platform = PLATFORM_MACOS;
     } else if ((strstr(platform_ver, "ios") == platform_ver)) {

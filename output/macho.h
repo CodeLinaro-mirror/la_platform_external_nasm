@@ -116,19 +116,6 @@
 #define R_SCATTERED	0x80000000
 
 /* Known values for the platform field in LC_BUILD_VERSION */
-#define PLATFORM_MACOS				1
-#define PLATFORM_IOS				2
-#define PLATFORM_TVOS				3
-#define PLATFORM_WATCHOS			4
-#define PLATFORM_BRIDGEOS			5
-#define PLATFORM_MACCATALYST		6
-#define PLATFORM_IOSSIMULATOR		7
-#define PLATFORM_TVOSSIMULATOR		8
-#define PLATFORM_WATCHOSSIMULATOR	9
-#define PLATFORM_DRIVERKIT			10
-
-#define PLATFORM_INVALID			0
-
 /* VM permission constants */
 #define	VM_PROT_NONE			0x00
 #define VM_PROT_READ			0x01
