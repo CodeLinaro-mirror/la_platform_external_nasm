@@ -70,8 +70,6 @@ TAGS
 /doc/Fontmap
 /editors/nasmtok.el
 /editors/nasmtok.json
-/include/warnings.h
-/macros/macros.c
 /misc/omfdump
 /misc/Makefile
 /nasm
@@ -86,7 +84,6 @@ TAGS
 /test/testresults
 /test/ffmpegtest
 /test/x264test
-/version.h
 /version.mac
 /version.mak
 /version.sed
