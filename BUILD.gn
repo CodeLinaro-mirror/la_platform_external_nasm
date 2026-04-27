@@ -126,6 +126,8 @@ if (current_toolchain == host_toolchain) {
     configs += configs_to_add
     configs += [ ":nasm_config" ]
 
+    deps = [ "//third_party/zlib" ]
+
     no_default_deps = should_remove_default_deps_for_performance
   }
 }
