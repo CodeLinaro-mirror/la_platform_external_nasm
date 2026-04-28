@@ -48,8 +48,13 @@ def UpdateLinuxConfig(path):
 
 
 def UpdateMacConfig(path):
-    pass
-
+    RewriteFile(
+        path,
+        [
+            (r'#define HAVE_TYPEOF 1',
+             r'/* #undef HAVE_TYPEOF */ // Controlled by the Chromium build process - see generate_nasm_configs.py'
+             )
+       ])
 
 def main():
     UpdateLinuxConfig('config/config-linux.h')

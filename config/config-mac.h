@@ -516,7 +516,7 @@
 #define HAVE_S_ISREG 1
 
 /* Define to 1 if you have some version of the typeof operator. */
-#define HAVE_TYPEOF 1
+/* #undef HAVE_TYPEOF */ // Controlled by the Chromium build process - see generate_nasm_configs.py
 
 /* Define to 1 if the system has the type 'uintmax_t'. */
 #define HAVE_UINTMAX_T 1

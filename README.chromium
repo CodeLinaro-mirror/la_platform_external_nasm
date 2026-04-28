@@ -75,7 +75,8 @@ checkout just add:
 
 export SDKROOT=$path_to_chrome_src/build/mac_files/xcode_binaries/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
 
-You can stop after configure. Then just follow the copy instructions above.
+You can stop after configure. Then just follow the copy instructions above
+(including running generate_nasm_configs.py).
 
 
 --[ TODOS ] ------------------
