@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------- *
  *   
- *   Copyright 1996-2013 The NASM Authors - All Rights Reserved
+ *   Copyright 1996-2017 The NASM Authors - All Rights Reserved
  *   See the file AUTHORS included with the NASM distribution for
  *   the specific copyright holders.
  *
@@ -42,14 +42,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <inttypes.h>
 
 #include "nasm.h"
 #include "nasmlib.h"
+#include "error.h"
 #include "saa.h"
 #include "raa.h"
-#include "output/outform.h"
-#include "output/outlib.h"
+#include "outform.h"
+#include "outlib.h"
 
 #ifdef OF_AS86
 
@@ -91,8 +91,6 @@ struct Section {
     struct Piece *head, *last, **tail;
 };
 
-static char as86_module[FILENAME_MAX];
-
 static struct Section stext, sdata;
 static uint32_t bsslen;
 static int32_t bssindex;
@@ -103,13 +101,13 @@ static uint32_t nsyms;
 static struct RAA *bsym;
 
 static struct SAA *strs;
-static uint32_t strslen;
+static size_t strslen;
 
 static int as86_reloc_size;
 
 static void as86_write(void);
 static void as86_write_section(struct Section *, int);
-static int as86_add_string(char *name);
+static size_t as86_add_string(const char *name);
 static void as86_sect_write(struct Section *, const uint8_t *,
                             uint32_t);
 
@@ -135,14 +133,13 @@ static void as86_init(void)
     strs = saa_init(1L);
     strslen = 0;
 
-    as86_add_string(as86_module);
+    /* as86 module name = input file minus extension */
+    as86_add_string(filename_set_extension(inname, ""));
 }
 
-static void as86_cleanup(int debuginfo)
+static void as86_cleanup(void)
 {
     struct Piece *p;
-
-    (void)debuginfo;
 
     as86_write();
     saa_free(stext.data);
@@ -170,11 +167,10 @@ static int32_t as86_section_names(char *name, int pass, int *bits)
     /*
      * Default is 16 bits.
      */
-    if (!name)
+    if (!name) {
         *bits = 16;
-
-    if (!name)
         return stext.index;
+    }
 
     if (!strcmp(name, ".text"))
         return stext.index;
@@ -186,12 +182,12 @@ static int32_t as86_section_names(char *name, int pass, int *bits)
         return NO_SEG;
 }
 
-static int as86_add_string(char *name)
+static size_t as86_add_string(const char *name)
 {
-    int pos = strslen;
-    int length = strlen(name);
+    size_t pos = strslen;
+    size_t length = strlen(name);
 
-    saa_wbytes(strs, name, (int32_t)(length + 1));
+    saa_wbytes(strs, name, length + 1);
     strslen += 1 + length;
 
     return pos;
@@ -301,16 +297,6 @@ static void as86_out(int32_t segto, const void *data,
         nasm_error(ERR_NONFATAL, "WRT not supported by as86 output format");
     }
 
-    /*
-     * handle absolute-assembly (structure definitions)
-     */
-    if (segto == NO_SEG) {
-        if (type != OUT_RESERVE)
-            nasm_error(ERR_NONFATAL, "attempt to assemble code in [ABSOLUTE]"
-                  " space");
-        return;
-    }
-
     if (segto == stext.index)
         s = &stext;
     else if (segto == sdata.index)
@@ -342,12 +328,10 @@ static void as86_out(int32_t segto, const void *data,
         } else
             bsslen += size;
     } else if (type == OUT_RAWDATA) {
-        if (segment != NO_SEG)
-            nasm_error(ERR_PANIC, "OUT_RAWDATA with other than NO_SEG");
         as86_sect_write(s, data, size);
         as86_add_piece(s, 0, 0L, 0L, size, 0);
     } else if (type == OUT_ADDRESS) {
-        int asize = abs(size);
+        int asize = abs((int)size);
         if (segment != NO_SEG) {
             if (segment % 2) {
                 nasm_error(ERR_NONFATAL, "as86 format does not support"
@@ -363,8 +347,6 @@ static void as86_out(int32_t segto, const void *data,
             as86_add_piece(s, 0, 0L, 0L, asize, 0);
         }
     } else if (type == OUT_REL2ADR) {
-        if (segment == segto)
-            nasm_error(ERR_PANIC, "intra-segment OUT_REL2ADR");
         if (segment != NO_SEG) {
             if (segment % 2) {
                 nasm_error(ERR_NONFATAL, "as86 format does not support"
@@ -376,8 +358,6 @@ static void as86_out(int32_t segto, const void *data,
             }
         }
     } else if (type == OUT_REL4ADR) {
-        if (segment == segto)
-            nasm_error(ERR_PANIC, "intra-segment OUT_REL4ADR");
         if (segment != NO_SEG) {
             if (segment % 2) {
                 nasm_error(ERR_NONFATAL, "as86 format does not support"
@@ -518,7 +498,7 @@ static void as86_set_rsize(int size)
             fputc(0x03, ofile);
             break;
         default:
-            nasm_error(ERR_PANIC, "bizarre relocation size %d", size);
+            nasm_panic("bizarre relocation size %d", size);
 	    break;
         }
     }
@@ -585,7 +565,7 @@ static void as86_write_section(struct Section *sect, int index)
                 fwriteint16_t(p->number, ofile);
             else
                 fputc(p->number, ofile);
-            switch ((int)s) {
+            switch (s) {
             case 0:
                 break;
             case 1:
@@ -609,43 +589,29 @@ static void as86_sect_write(struct Section *sect,
     sect->datalen += len;
 }
 
-static int32_t as86_segbase(int32_t segment)
-{
-    return segment;
-}
-
-static void as86_filename(char *inname, char *outname)
-{
-    char *p;
-
-    if ((p = strrchr(inname, '.')) != NULL) {
-        strncpy(as86_module, inname, p - inname);
-        as86_module[p - inname] = '\0';
-    } else
-        strcpy(as86_module, inname);
-
-    standard_extension(inname, outname, ".o");
-}
-
 extern macros_t as86_stdmac[];
 
-struct ofmt of_as86 = {
+const struct ofmt of_as86 = {
     "Linux as86 (bin86 version 0.3) object files",
     "as86",
+    ".o",
     0,
+    32,
     null_debug_arr,
     &null_debug_form,
     as86_stdmac,
     as86_init,
-    null_setinfo,
+    null_reset,
+    nasm_do_legacy_output,
     as86_out,
     as86_deflabel,
     as86_section_names,
+    NULL,
     null_sectalign,
-    as86_segbase,
+    null_segbase,
     null_directive,
-    as86_filename,
-    as86_cleanup
+    as86_cleanup,
+    NULL                        /* pragma list */
 };
 
 #endif                          /* OF_AS86 */

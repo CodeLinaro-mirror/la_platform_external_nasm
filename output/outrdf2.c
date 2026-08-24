@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------- *
  *   
- *   Copyright 1996-2013 The NASM Authors - All Rights Reserved
+ *   Copyright 1996-2016 The NASM Authors - All Rights Reserved
  *   See the file AUTHORS included with the NASM distribution for
  *   the specific copyright holders.
  *
@@ -44,20 +44,20 @@
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
-#include <inttypes.h>
 
 #include "nasm.h"
 #include "nasmlib.h"
+#include "error.h"
 #include "saa.h"
-#include "output/outform.h"
-#include "output/outlib.h"
+#include "outform.h"
+#include "outlib.h"
 
 /* VERBOSE_WARNINGS: define this to add some extra warnings... */
 #define VERBOSE_WARNINGS
 
 #ifdef OF_RDF2
 
-#include "rdoff/rdoff.h"
+#include "rdoff.h"
 
 /* This signature is written to start of RDOFF files */
 static const char *RDOFF2Id = RDOFF2_SIGNATURE;
@@ -114,8 +114,6 @@ static void rdf2_init(void)
 {
     int segtext, segdata, segbss;
 
-    maxbits = 64;
-
     /* set up the initial segments */
     segments[0].segname = ".text";
     segments[0].segnumber = 0;
@@ -147,9 +145,8 @@ static void rdf2_init(void)
     segdata = seg_alloc();
     segbss = seg_alloc();
     if (segtext != 0 || segdata != 2 || segbss != 4)
-        nasm_error(ERR_PANIC,
-              "rdf segment numbers not allocated as expected (%d,%d,%d)",
-              segtext, segdata, segbss);
+        nasm_panic("rdf segment numbers not allocated as expected (%d,%d,%d)",
+                   segtext, segdata, segbss);
     bsslength = 0;
     headerlength = 0;
 }
@@ -229,7 +226,7 @@ static int32_t rdf2_section_names(char *name, int pass, int *bits)
         code = 3;
     }
     if (nsegments == RDF_MAXSEGS) {
-        nasm_error(ERR_FATAL, "reached compiled-in maximum segment limit (%d)",
+        nasm_fatal("reached compiled-in maximum segment limit (%d)",
               RDF_MAXSEGS);
         return NO_SEG;
     }
@@ -237,7 +234,7 @@ static int32_t rdf2_section_names(char *name, int pass, int *bits)
     segments[nsegments].segname = nasm_strdup(name);
     i = seg_alloc();
     if (i % 2 != 0)
-        nasm_error(ERR_PANIC, "seg_alloc() returned odd number");
+        nasm_panic("seg_alloc() returned odd number");
     segments[nsegments].segnumber = i >> 1;
     segments[nsegments].segtype = code;
     segments[nsegments].segreserved = reserved;
@@ -499,7 +496,7 @@ static void membufwrite(int segment, const void *data, int bytes)
             break;
     }
     if (i == nsegments)
-        nasm_error(ERR_PANIC, "can't find segment %d", segment);
+        nasm_panic("can't find segment %d", segment);
 
     if (bytes < 0) {
         b = buf;
@@ -522,7 +519,7 @@ static int getsegmentlength(int segment)
             break;
     }
     if (i == nsegments)
-        nasm_error(ERR_PANIC, "can't find segment %d", segment);
+        nasm_panic("can't find segment %d", segment);
 
     return segments[i].seglength;
 }
@@ -534,13 +531,6 @@ static void rdf2_out(int32_t segto, const void *data,
     struct RelocRec rr;
     uint8_t databuf[8], *pd;
     int seg;
-
-    if (segto == NO_SEG) {
-        if (type != OUT_RESERVE)
-            nasm_error(ERR_NONFATAL,
-                  "attempt to assemble code in ABSOLUTE space");
-        return;
-    }
 
     segto >>= 1;                /* convert NASM segment no to RDF number */
 
@@ -578,12 +568,9 @@ static void rdf2_out(int32_t segto, const void *data,
             while (size--)
                 membufwrite(segto, databuf, 1);
     } else if (type == OUT_RAWDATA) {
-        if (segment != NO_SEG)
-            nasm_error(ERR_PANIC, "OUT_RAWDATA with other than NO_SEG");
-
         membufwrite(segto, data, size);
     } else if (type == OUT_ADDRESS) {
-        int asize = abs(size);
+        int asize = abs((int)size);
 
         /* if segment == NO_SEG then we are writing an address of an
            object within the same segment - do not produce reloc rec. */
@@ -608,7 +595,7 @@ static void rdf2_out(int32_t segto, const void *data,
         membufwrite(segto, databuf, asize);
     } else if (type == OUT_REL2ADR) {
         if (segment == segto)
-            nasm_error(ERR_PANIC, "intra-segment OUT_REL2ADR");
+            nasm_panic("intra-segment OUT_REL2ADR");
 
         rr.reclen = 8;
         rr.offset = getsegmentlength(segto);    /* current offset */
@@ -640,9 +627,9 @@ static void rdf2_out(int32_t segto, const void *data,
         membufwrite(segto, &rr.offset, -2);
     } else if (type == OUT_REL4ADR) {
         if ((segment == segto) && (globalbits != 64))
-            nasm_error(ERR_PANIC, "intra-segment OUT_REL4ADR");
+            nasm_panic("intra-segment OUT_REL4ADR");
         if (segment != NO_SEG && segment % 2) {
-            nasm_error(ERR_PANIC, "erm... 4 byte segment base ref?");
+            nasm_panic("erm... 4 byte segment base ref?");
         }
 
         rr.type = RDFREC_RELOC; /* type signature */
@@ -659,13 +646,11 @@ static void rdf2_out(int32_t segto, const void *data,
     }
 }
 
-static void rdf2_cleanup(int debuginfo)
+static void rdf2_cleanup(void)
 {
     int32_t l;
     struct BSSRec bs;
     int i;
-
-    (void)debuginfo;
 
     /* should write imported & exported symbol declarations to header here */
 
@@ -716,15 +701,11 @@ static void rdf2_cleanup(int debuginfo)
     fwriteint16_t(0, ofile);
 }
 
-static int32_t rdf2_segbase(int32_t segment)
-{
-    return segment;
-}
-
 /*
  * Handle RDOFF2 specific directives
  */
-static int rdf2_directive(enum directives directive, char *value, int pass)
+static enum directive_result
+rdf2_directive(enum directive directive, char *value, int pass)
 {
     size_t n;
 
@@ -733,7 +714,7 @@ static int rdf2_directive(enum directives directive, char *value, int pass)
 	n = strlen(value);
 	if (n >= MODLIB_NAME_MAX) {
 	    nasm_error(ERR_NONFATAL, "name size exceeds %d bytes", MODLIB_NAME_MAX);
-	    return 1;
+	    return DIRR_ERROR;
 	}
         if (pass == 1) {
             struct DLLRec r;
@@ -742,12 +723,12 @@ static int rdf2_directive(enum directives directive, char *value, int pass)
             strcpy(r.libname, value);
             write_dll_rec(&r);
         }
-        return 1;
+        return DIRR_OK;
 	
     case D_MODULE:
 	if ((n = strlen(value)) >= MODLIB_NAME_MAX) {
 	    nasm_error(ERR_NONFATAL, "name size exceeds %d bytes", MODLIB_NAME_MAX);
-	    return 1;
+	    return DIRR_ERROR;
 	}
         if (pass == 1) {
             struct ModRec r;
@@ -756,44 +737,36 @@ static int rdf2_directive(enum directives directive, char *value, int pass)
             strcpy(r.modname, value);
             write_modname_rec(&r);
         }
-        return 1;
+        return DIRR_OK;
 
     default:
-	return 0;
+	return DIRR_UNKNOWN;
     }
-}
-
-static void rdf2_filename(char *inname, char *outname)
-{
-    standard_extension(inname, outname, ".rdf");
 }
 
 extern macros_t rdf2_stdmac[];
 
-static int rdf2_set_info(enum geninfo type, char **val)
-{
-    (void)type;
-    (void)val;
-    return 0;
-}
-
-struct ofmt of_rdf2 = {
+const struct ofmt of_rdf2 = {
     "Relocatable Dynamic Object File Format v2.0",
     "rdf",
+    ".rdf",
     0,
+    64,
     null_debug_arr,
     &null_debug_form,
     rdf2_stdmac,
     rdf2_init,
-    rdf2_set_info,
+    null_reset,
+    nasm_do_legacy_output,
     rdf2_out,
     rdf2_deflabel,
     rdf2_section_names,
+    NULL,
     null_sectalign,
-    rdf2_segbase,
+    null_segbase,
     rdf2_directive,
-    rdf2_filename,
-    rdf2_cleanup
+    rdf2_cleanup,
+    NULL                        /* pragma list */
 };
 
 #endif                          /* OF_RDF2 */

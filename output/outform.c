@@ -42,14 +42,15 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <inttypes.h>
 
 #define BUILD_DRIVERS_ARRAY
-#include "output/outform.h"
+#include "outform.h"
 
-struct ofmt *ofmt_find(char *name, struct ofmt_alias **ofmt_alias)
+const struct ofmt *ofmt_find(const char *name,
+			     const struct ofmt_alias **ofmt_alias)
 {
-    struct ofmt **ofp, *of;
+    const struct ofmt * const *ofp;
+    const struct ofmt *of;
     unsigned int i;
 
     *ofmt_alias = NULL;
@@ -72,9 +73,10 @@ struct ofmt *ofmt_find(char *name, struct ofmt_alias **ofmt_alias)
     return NULL;
 }
 
-struct dfmt *dfmt_find(struct ofmt *ofmt, char *name)
+const struct dfmt *dfmt_find(const struct ofmt *ofmt, const char *name)
 {
-    struct dfmt **dfp, *df;
+    const struct dfmt * const *dfp;
+    const struct dfmt *df;
 
     for (dfp = ofmt->debug_formats; (df = *dfp); dfp++) {
         if (!nasm_stricmp(name, df->shortname))
@@ -83,9 +85,9 @@ struct dfmt *dfmt_find(struct ofmt *ofmt, char *name)
     return NULL;
 }
 
-void ofmt_list(struct ofmt *deffmt, FILE * fp)
+void ofmt_list(const struct ofmt *deffmt, FILE * fp)
 {
-    struct ofmt **ofp, *of;
+    const struct ofmt * const *ofp, *of;
     unsigned int i;
 
     /* primary targets first */
@@ -105,13 +107,14 @@ void ofmt_list(struct ofmt *deffmt, FILE * fp)
     }
 }
 
-void dfmt_list(struct ofmt *ofmt, FILE *fp)
+void dfmt_list(const struct ofmt *ofmt, FILE *fp)
 {
-    struct dfmt **dfp, *df;
+    const struct dfmt * const *dfp;
+    const struct dfmt *df;
 
     for (dfp = ofmt->debug_formats; (df = *dfp); dfp++) {
         fprintf(fp, "  %c %-10s%s\n",
-                df == ofmt->current_dfmt ? '*' : ' ',
+                df == dfmt ? '*' : ' ',
                 df->shortname, df->fullname);
     }
 }

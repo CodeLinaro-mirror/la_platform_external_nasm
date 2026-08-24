@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------- *
  *
- *   Copyright 1996-2009 The NASM Authors - All Rights Reserved
+ *   Copyright 1996-2018 The NASM Authors - All Rights Reserved
  *   See the file AUTHORS included with the NASM distribution for
  *   the specific copyright holders.
  *
@@ -90,6 +90,7 @@ enum dwarf_tag {
 	DW_TAG_variant_part		= 0x33,
 	DW_TAG_variable			= 0x34,
 	DW_TAG_volatile_type		= 0x35,
+	/* DWARF 3 */
 	DW_TAG_dwarf_procedure		= 0x36,
 	DW_TAG_restrict_type		= 0x37,
 	DW_TAG_interface_type		= 0x38,
@@ -100,6 +101,12 @@ enum dwarf_tag {
 	DW_TAG_imported_unit		= 0x3d,
 	DW_TAG_condition		= 0x3f,
 	DW_TAG_shared_type		= 0x40,
+	/* DWARF 4 */
+	DW_TAG_type_unit		= 0x41,
+	DW_TAG_rvalue_reference_type	= 0x42,
+	DW_TAG_template_alias		= 0x43,
+	/* DWARF 5 */
+	DW_TAG_atomic_type		= 0x47,
 
 	DW_TAG_lo_user			= 0x4080,
 	DW_TAG_hi_user			= 0xffff
@@ -131,7 +138,12 @@ enum dwarf_form {
 	DW_FORM_ref4		= 0x13,
 	DW_FORM_ref8		= 0x14,
 	DW_FORM_ref_udata	= 0x15,
-	DW_FORM_indirect	= 0x16
+	DW_FORM_indirect	= 0x16,
+	/* DWARF 4 */
+	DW_FORM_sec_offset	= 0x17,
+	DW_FORM_exprloc		= 0x18,
+	DW_FORM_flag_present	= 0x19,
+	DW_FORM_ref_sig8	= 0x20
 };
 
 enum dwarf_attribute {
@@ -194,6 +206,7 @@ enum dwarf_attribute {
 	DW_AT_variable_parameter = 0x4b,
 	DW_AT_virtuality	= 0x4c,
 	DW_AT_vtable_elem_location = 0x4d,
+	/* DWARF 3 */
 	DW_AT_allocated		= 0x4e,
 	DW_AT_associated	= 0x4f,
 	DW_AT_data_location	= 0x50,
@@ -221,6 +234,15 @@ enum dwarf_attribute {
 	DW_AT_elemental		= 0x66,
 	DW_AT_pure		= 0x67,
 	DW_AT_recursive		= 0x68,
+	/* DWARF 4 */
+	DW_AT_signature		= 0x69,
+	DW_AT_main_subprogram	= 0x6a,
+	DW_AT_data_bit_offset	= 0x6b,
+	DW_AT_const_expr	= 0x6c,
+	DW_AT_enum_class	= 0x6d,
+	DW_AT_linkage_name	= 0x6e,
+	/* DWARF 5 */
+	DW_AT_noreturn		= 0x87,
 
 	DW_AT_lo_user		= 0x2000,
 	DW_AT_hi_user		= 0x3fff
@@ -372,6 +394,7 @@ enum dwarf_op {
 	DW_OP_deref_size	= 0x94,
 	DW_OP_xderef_size	= 0x95,
 	DW_OP_nop		= 0x96,
+	/* DWARF 3 */
 	DW_OP_push_object_address = 0x97,
 	DW_OP_call2		= 0x98,
 	DW_OP_call4		= 0x99,
@@ -379,6 +402,9 @@ enum dwarf_op {
 	DW_OP_form_tls_address	= 0x9b,
 	DW_OP_call_frame_cfa	= 0x9c,
 	DW_OP_bit_piece		= 0x9d,
+	/* DWARF 4 */
+	DW_OP_implicit_value	= 0x9e,
+	DW_OP_stack_value	= 0x9f,
 
 	DW_OP_lo_user		= 0xe0,
 	DW_OP_hi_user		= 0xff
@@ -393,6 +419,7 @@ enum dwarf_base_type {
 	DW_ATE_signed_char	= 0x06,
 	DW_ATE_unsigned		= 0x07,
 	DW_ATE_unsigned_char	= 0x08,
+	/* DWARF 3 */
 	DW_ATE_imaginary_float	= 0x09,
 	DW_ATE_packed_decimal	= 0x0a,
 	DW_ATE_numeric_string	= 0x0b,
@@ -400,6 +427,8 @@ enum dwarf_base_type {
 	DW_ATE_signed_fixed	= 0x0d,
 	DW_ATE_unsigned_fixed	= 0x0e,
 	DW_ATE_decimal_float	= 0x0f,
+	/* DWARF 4 */
+	DW_ATE_UTF		= 0x10,
 
 	DW_ATE_lo_user		= 0x80,
 	DW_ATE_hi_user		= 0xff
@@ -460,11 +489,30 @@ enum dwarf_language {
 	DW_LANG_ObjC_plus_plus	= 0x0011,
 	DW_LANG_UPC		= 0x0012,
 	DW_LANG_D		= 0x0013,
+	DW_LANG_Python		= 0x0014,
+	DW_LANG_OpenCL		= 0x0015,
+	DW_LANG_Go		= 0x0016,
+	DW_LANG_Modula3		= 0x0017,
+	DW_LANG_Haskell		= 0x0018,
+	DW_LANG_C_plus_plus_03	= 0x0019,
+	DW_LANG_C_plus_plus_11	= 0x001a,
+	DW_LANG_OCaml		= 0x001b,
+	DW_LANG_Rust		= 0x001c,
+	DW_LANG_C11		= 0x001d,
+	DW_LANG_Swift		= 0x001e,
+	DW_LANG_Julia		= 0x001f,
+	DW_LANG_Dylan		= 0x0020,
+	DW_LANG_C_plus_plus_14	= 0x0021,
+	DW_LANG_Fortran03	= 0x0022,
+	DW_LANG_Fortran08	= 0x0023,
+	DW_LANG_RenderScript	= 0x0024,
 
 	DW_LANG_Mips_Assembler	= 0x8001,
 
 	DW_LANG_lo_user		= 0x8000,
-	DW_LANG_hi_user		= 0xffff
+	DW_LANG_hi_user		= 0xffff,
+
+	DW_LANG_Rust_old	= 0x9000
 };
 
 enum dwarf_identifier_case {
@@ -475,12 +523,17 @@ enum dwarf_identifier_case {
 };
 
 enum dwarf_calling_conversion {
-	DW_CC_normal	= 0x01,
-	DW_CC_program	= 0x02,
-	DW_CC_nocall	= 0x03,
+	DW_CC_normal			= 0x01,
+	DW_CC_program			= 0x02,
+	DW_CC_nocall			= 0x03,
+	DW_CC_pass_by_reference		= 0x4,
+	DW_CC_pass_by_value		= 0x5,
 
-	DW_CC_lo_user	= 0x40,
-	DW_CC_hi_user	= 0xff
+	DW_CC_lo_user			= 0x40,
+	DW_CC_hi_user			= 0xff,
+
+	DW_CC_GNU_renesas_sh		= 0x40,
+	DW_CC_GNU_borland_fastcall_i386	= 0x41
 };
 
 enum dwarf_inline {
@@ -520,6 +573,7 @@ enum dwarf_line_number_extended {
 	DW_LNE_end_sequence	= 0x01,
 	DW_LNE_set_address	= 0x02,
 	DW_LNE_define_file	= 0x03,
+	DW_LNE_set_discriminator= 0x04,
 	DW_LNE_lo_user		= 0x80,
 	DW_LNE_hi_user		= 0xff
 };
@@ -551,7 +605,8 @@ enum dwarf_call_frame {
 	DW_CFA_def_cfa			= 0x0c,
 	DW_CFA_def_cfa_register		= 0x0d,
 	DW_CFA_def_cfa_offset		= 0x0e,
-	DW_CFA_def_cfa_expression 	= 0x0f,
+	/* DWARF 3 */
+	DW_CFA_def_cfa_expression	= 0x0f,
 	DW_CFA_expression		= 0x10,
 	DW_CFA_offset_extended_sf	= 0x11,
 	DW_CFA_def_cfa_sf		= 0x12,

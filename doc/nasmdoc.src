@@ -1,6 +1,6 @@
 \# --------------------------------------------------------------------------
 \#
-\#   Copyright 1996-2014 The NASM Authors - All Rights Reserved
+\#   Copyright 1996-2018 The NASM Authors - All Rights Reserved
 \#   See the file AUTHORS included with the NASM distribution for
 \#   the specific copyright holders.
 \#
@@ -33,9 +33,10 @@
 \#
 \# Source code to NASM documentation
 \#
+
 \M{category}{Programming}
 \M{title}{NASM - The Netwide Assembler}
-\M{year}{1996-2012}
+\M{year}{1996-2017}
 \M{author}{The NASM Development Team}
 \M{copyright_tail}{-- All Rights Reserved}
 \M{license}{This document is redistributable under the license given in the file "LICENSE" distributed in the NASM archive.}
@@ -45,6 +46,9 @@
 \M{infotitle}{The Netwide Assembler for x86}
 \M{epslogo}{nasmlogo.eps}
 \M{logoyadj}{-72}
+
+\& version.src
+
 \IR{-D} \c{-D} option
 \IR{-E} \c{-E} option
 \IR{-F} \c{-F} option
@@ -56,6 +60,7 @@
 \IR{-MP} \c{-MP} option
 \IR{-MQ} \c{-MQ} option
 \IR{-MT} \c{-MT} option
+\IR{-MW} \c{-MW} option
 \IR{-O} \c{-O} option
 \IR{-P} \c{-P} option
 \IR{-U} \c{-U} option
@@ -73,6 +78,8 @@
 \IR{-u} \c{-u} option
 \IR{-v} \c{-v} option
 \IR{-W} \c{-W} option
+\IR{-Werror} \c{-Werror} option
+\IR{-Wno-error} \c{-Wno-error} option
 \IR{-w} \c{-w} option
 \IR{-y} \c{-y} option
 \IR{-Z} \c{-Z} option
@@ -140,6 +147,7 @@ variables
 \IA{case-sensitive}{case sensitive}
 \IA{case-insensitive}{case sensitive}
 \IA{character constants}{character constant}
+\IR{codeview} CodeView debugging format
 \IR{common object file format} Common Object File Format
 \IR{common variables, alignment in elf} common variables, alignment
 in \c{elf}
@@ -187,7 +195,8 @@ convention
 \IR{logical or} logical OR
 \IR{logical xor} logical XOR
 \IR{mach object file format} Mach, object file format
-\IR{mach-o} Mach-O
+\IA{mach-o}{macho}
+\IR{mach-o} Mach-O, object file format
 \IR{macho32} \c{macho32}
 \IR{macho64} \c{macho64}
 \IR{macos x} MacOS X
@@ -206,6 +215,8 @@ convention
 \IR{nan} NaN
 \IR{nasm version} NASM version
 \IR{netbsd} NetBSD
+\IR{nsis} NSIS
+\IR{nullsoft scriptable installer} Nullsoft Scriptable Installer
 \IR{omf} OMF
 \IR{openbsd} OpenBSD
 \IR{operating system} operating system
@@ -232,6 +243,7 @@ Object File Format
 \IR{section alignment, in obj} section alignment, in \c{obj}
 \IR{section alignment, in win32} section alignment, in \c{win32}
 \IR{section, elf extensions to} \c{SECTION}, \c{elf} extensions to
+\IR{section, macho extensions to} \c{SECTION}, \c{macho} extensions to
 \IR{section, win32 extensions to} \c{SECTION}, \c{win32} extensions to
 \IR{segment alignment, in bin} segment alignment, in \c{bin}
 \IR{segment alignment, in obj} segment alignment, in \c{obj}
@@ -284,50 +296,15 @@ Object File Format
 The Netwide Assembler, NASM, is an 80x86 and x86-64 assembler designed
 for portability and modularity. It supports a range of object file
 formats, including Linux and \c{*BSD} \c{a.out}, \c{ELF}, \c{COFF},
-\c{Mach-O}, Microsoft 16-bit \c{OBJ}, \c{Win32} and \c{Win64}. It will
-also output plain binary files. Its syntax is designed to be simple
-and easy to understand, similar to Intel's but less complex. It
-supports all currently known x86 architectural extensions, and has
-strong support for macros.
+\c{Mach-O}, 16-bit and 32-bit \c{OBJ} (OMF) format, \c{Win32} and
+\c{Win64}. It will also output plain binary files, Intel hex and
+Motorola S-Record formats. Its syntax is designed to be simple and
+easy to understand, similar to the syntax in the Intel Software
+Developer Manual with minimal complexity. It supports all currently
+known x86 architectural extensions, and has strong support for macros.
 
-
-\S{yaasm} Why Yet Another Assembler?
-
-The Netwide Assembler grew out of an idea on \i\c{comp.lang.asm.x86}
-(or possibly \i\c{alt.lang.asm} - I forget which), which was
-essentially that there didn't seem to be a good \e{free} x86-series
-assembler around, and that maybe someone ought to write one.
-
-\b \i\c{a86} is good, but not free, and in particular you don't get any
-32-bit capability until you pay. It's DOS only, too.
-
-\b \i\c{gas} is free, and ports over to DOS and Unix, but it's not
-very good, since it's designed to be a back end to \i\c{gcc}, which
-always feeds it correct code. So its error checking is minimal. Also,
-its syntax is horrible, from the point of view of anyone trying to
-actually \e{write} anything in it. Plus you can't write 16-bit code in
-it (properly.)
-
-\b \i\c{as86} is specific to Minix and Linux, and (my version at least)
-doesn't seem to have much (or any) documentation.
-
-\b \i\c{MASM} isn't very good, and it's (was) expensive, and it runs only under
-DOS.
-
-\b \i\c{TASM} is better, but still strives for MASM compatibility,
-which means millions of directives and tons of red tape. And its syntax
-is essentially MASM's, with the contradictions and quirks that
-entails (although it sorts out some of those by means of Ideal mode.)
-It's expensive too. And it's DOS-only.
-
-So here, for your coding pleasure, is NASM. At present it's
-still in prototype stage - we don't promise that it can outperform
-any of these assemblers. But please, \e{please} send us bug reports,
-fixes, helpful information, and anything else you can get your hands
-on (and thanks to the many people who've done this already! You all
-know who you are), and we'll improve it out of all recognition.
-Again.
-
+NASM also comes with a set of utilities for handling the \c{RDOFF}
+custom object-file format.
 
 \S{legal} \i{License} Conditions
 
@@ -336,7 +313,7 @@ distribution archive, for the license conditions under which you may
 use NASM.  NASM is now under the so-called 2-clause BSD license, also
 known as the simplified BSD license.
 
-Copyright 1996-2011 the NASM Authors - All rights reserved.
+Copyright 1996-2017 the NASM Authors - All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are
@@ -348,7 +325,7 @@ notice, this list of conditions and the following disclaimer.
 \b Redistributions in binary form must reproduce the above copyright
 notice, this list of conditions and the following disclaimer in the
 documentation and/or other materials provided with the distribution.
-      
+
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
 CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
 INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -362,102 +339,6 @@ HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
 CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-
-\H{contact} Contact Information
-
-The current version of NASM (since about 0.98.08) is maintained by a
-team of developers, accessible through the \c{nasm-devel} mailing list
-(see below for the link).
-If you want to report a bug, please read \k{bugs} first.
-
-NASM has a \i{website} at
-\W{http://www.nasm.us/}\c{http://www.nasm.us/}. If it's not there,
-google for us!
-
-\i{New releases}, \i{release candidates}, and \I{snapshots, daily
-development}\i{daily development snapshots} of NASM are available from
-the official web site.
-
-Announcements are posted to
-\W{news:comp.lang.asm.x86}\i\c{comp.lang.asm.x86},
-and to the web site
-\W{http://www.freshmeat.net/}\c{http://www.freshmeat.net/}.
-
-If you want information about the current development status, please
-subscribe to the \i\c{nasm-devel} email list; see link from the
-website.
-
-
-\H{install} Installation
-
-\S{instdos} \i{Installing} NASM under MS-\i{DOS} or Windows
-
-Once you've obtained the appropriate archive for NASM,
-\i\c{nasm-XXX-dos.zip} or \i\c{nasm-XXX-win32.zip} (where \c{XXX}
-denotes the version number of NASM contained in the archive), unpack
-it into its own directory (for example \c{c:\\nasm}).
-
-The archive will contain a set of executable files: the NASM
-executable file \i\c{nasm.exe}, the NDISASM executable file
-\i\c{ndisasm.exe}, and possibly additional utilities to handle the
-RDOFF file format.
-
-The only file NASM needs to run is its own executable, so copy
-\c{nasm.exe} to a directory on your PATH, or alternatively edit
-\i\c{autoexec.bat} to add the \c{nasm} directory to your
-\i\c{PATH} (to do that under Windows XP, go to Start > Control Panel >
-System > Advanced > Environment Variables; these instructions may work
-under other versions of Windows as well.)
-
-That's it - NASM is installed. You don't need the nasm directory
-to be present to run NASM (unless you've added it to your \c{PATH}),
-so you can delete it if you need to save space; however, you may
-want to keep the documentation or test programs.
-
-If you've downloaded the \i{DOS source archive}, \i\c{nasm-XXX.zip},
-the \c{nasm} directory will also contain the full NASM \i{source
-code}, and a selection of \i{Makefiles} you can (hopefully) use to
-rebuild your copy of NASM from scratch.  See the file \c{INSTALL} in
-the source archive.
-
-Note that a number of files are generated from other files by Perl
-scripts.  Although the NASM source distribution includes these
-generated files, you will need to rebuild them (and hence, will need a
-Perl interpreter) if you change insns.dat, standard.mac or the
-documentation. It is possible future source distributions may not
-include these files at all. Ports of \i{Perl} for a variety of
-platforms, including DOS and Windows, are available from
-\W{http://www.cpan.org/ports/}\i{www.cpan.org}.
-
-
-\S{instdos} Installing NASM under \i{Unix}
-
-Once you've obtained the \i{Unix source archive} for NASM,
-\i\c{nasm-XXX.tar.gz} (where \c{XXX} denotes the version number of
-NASM contained in the archive), unpack it into a directory such
-as \c{/usr/local/src}. The archive, when unpacked, will create its
-own subdirectory \c{nasm-XXX}.
-
-NASM is an \I{Autoconf}\I\c{configure}auto-configuring package: once
-you've unpacked it, \c{cd} to the directory it's been unpacked into
-and type \c{./configure}. This shell script will find the best C
-compiler to use for building NASM and set up \i{Makefiles}
-accordingly.
-
-Once NASM has auto-configured, you can type \i\c{make} to build the
-\c{nasm} and \c{ndisasm} binaries, and then \c{make install} to
-install them in \c{/usr/local/bin} and install the \i{man pages}
-\i\c{nasm.1} and \i\c{ndisasm.1} in \c{/usr/local/man/man1}.
-Alternatively, you can give options such as \c{--prefix} to the
-configure script (see the file \i\c{INSTALL} for more details), or
-install the programs yourself.
-
-NASM also comes with a set of utilities for handling the \c{RDOFF}
-custom object-file format, which are in the \i\c{rdoff} subdirectory
-of the NASM archive. You can build these with \c{make rdf} and
-install them with \c{make rdf_install}, if you want them.
-
 
 \C{running} Running NASM
 
@@ -486,6 +367,8 @@ to give a listing file name, for example:
 To get further usage instructions from NASM, try typing
 
 \c nasm -h
+
+\c{--help} option is also the same.
 
 As \c{-hf}, this will also list the available output file formats, and what they
 are.
@@ -638,6 +521,15 @@ each header file.  This prevents Make from complaining if a header
 file has been removed.
 
 
+\S{opt-MW} The \i\c{-MW} Option: Watcom Make quoting style
+
+This option causes NASM to attempt to quote dependencies according to
+Watcom Make conventions rather than POSIX Make conventions (also used
+by most other Make variants.)  This quotes \c{#} as \c{$#} rather than
+\c{\\#}, uses \c{&} rather than \c{\\} for continuation lines, and
+encloses filenames containing whitespace in double quotes.
+
+
 \S{opt-F} The \i\c{-F} Option: Selecting a \i{Debug Information Format}
 
 This option is used to select the format of the debug information
@@ -651,9 +543,8 @@ A complete list of the available debug file formats for an output
 format can be seen by issuing the command \c{nasm -f <format> -y}.  Not
 all output formats currently support debugging output.  See \k{opt-y}.
 
-This should not be confused with the \c{-f dbg} output format option which
-is not built into NASM by default. For information on how
-to enable it when building from the sources, see \k{dbgfmt}.
+This should not be confused with the \c{-f dbg} output format option,
+see \k{dbgfmt}.
 
 
 \S{opt-g} The \i\c{-g} Option: Enabling \i{Debug Information}.
@@ -768,8 +659,11 @@ option. So running
 is equivalent to running \c{nasm myfile.asm} and placing the
 directive \c{%include "myinc.inc"} at the start of the file.
 
+\c{--include} option is also accepted.
+
 For consistency with the \c{-I}, \c{-D} and \c{-U} options, this
 option can also be specified as \c{-P}.
+
 
 
 \S{opt-d} The \i\c{-d}\I\c{-D} Option: \I{pre-defining macros}Pre-Define a Macro
@@ -908,19 +802,21 @@ name, for example \c{orphan-labels}; you can enable warnings of
 this class by the command-line option \c{-w+orphan-labels} and
 disable it by \c{-w-orphan-labels}.
 
-The \i{suppressible warning} classes are:
+The current \i{warning classes} are:
+
+\b \i\c{other} specifies any warning not otherwise specified in any
+class.  Enabled by default.
 
 \b \i\c{macro-params} covers warnings about \i{multi-line macros}
-being invoked with the wrong number of parameters. This warning
-class is enabled by default; see \k{mlmacover} for an example of why
+being invoked with the wrong number of parameters. Enabled by default;
+see \k{mlmacover} for an example of why you might want to disable it.
+
+\b \i\c{macro-selfref} warns if a macro references itself. Disabled by
+default.
+
+\b \i\c{macro-defaults} warns when a macro has more default parameters
+than optional parameters. Enabled by default; see \k{mlmacdef} for why
 you might want to disable it.
-
-\b \i\c{macro-selfref} warns if a macro references itself. This
-warning class is disabled by default.
-
-\b\i\c{macro-defaults} warns when a macro has more default
-parameters than optional parameters. This warning class
-is enabled by default; see \k{mlmacdef} for why you might want to disable it.
 
 \b \i\c{orphan-labels} covers warnings about source lines which
 contain no instruction but define a label without a trailing colon.
@@ -928,11 +824,11 @@ NASM warns about this somewhat obscure condition by default;
 see \k{syntax} for more information.
 
 \b \i\c{number-overflow} covers warnings about numeric constants which
-don't fit in 64 bits. This warning class is enabled by default.
+don't fit in 64 bits.  Enabled by default.
 
 \b \i\c{gnu-elf-extensions} warns if 8-bit or 16-bit relocations
 are used in \c{-f elf} format. The GNU extensions allow this.
-This warning class is disabled by default.
+Disabled by default.
 
 \b \i\c{float-overflow} warns about floating point overflow.
 Enabled by default.
@@ -960,21 +856,46 @@ Enabled by default.
 form of jmp instruction becomes jmp short form.
 Enabled by default.
 
-\b \i\c{error} causes warnings to be treated as errors.  Disabled by
-default.
+\b \i\c{zext-reloc} warns that a relocation has been zero-extended due
+to limitations in the output format.  Enabled by default.
 
-\b \i\c{all} is an alias for \e{all} suppressible warning classes (not
-including \c{error}).  Thus, \c{-w+all} enables all available warnings.
+\b \i\c\{ptr} warns about keywords used in other assemblers that might
+indicate a mistake in the source code.  Currently only the MASM
+\c{PTR} keyword is recognized.  Enabled by default.
 
-In addition, you can set warning classes across sections.
-Warning classes may be enabled with \i\c{[warning +warning-name]},
-disabled with \i\c{[warning -warning-name]} or reset to their
-original value with \i\c{[warning *warning-name]}. No "user form"
-(without the brackets) exists.
+\b \i\c{bad-pragma} warns about a malformed or otherwise unparsable
+\c{%pragma} directive.  Disabled by default.
 
-Since version 2.00, NASM has also supported the gcc-like syntax
-\c{-Wwarning} and \c{-Wno-warning} instead of \c{-w+warning} and
-\c{-w-warning}, respectively.
+\b \i\c{unknown-pragma} warns about an unknown \c{%pragma} directive.
+This is not yet implemented.  Disabled by default.
+
+\b \i\c{not-my-pragma} warns about a \c{%pragma} directive which is
+not applicable to this particular assembly session.  This is not yet
+implemented.  Disabled by default.
+
+\b \i\c{unknown-warning} warns about a \c{-w} or \c{-W} option or a
+\c{[WARNING]} directive that contains an unknown warning name or is
+otherwise not possible to process.  Disabled by default.
+
+\b \i\c{all} is an alias for \e{all} suppressible warning classes.
+Thus, \c{-w+all} enables all available warnings, and \c{-w-all}
+disables warnings entirely (since NASM 2.13).
+
+Since version 2.00, NASM has also supported the \c{gcc}-like syntax
+\c{-Wwarning-class} and \c{-Wno-warning-class} instead of
+\c{-w+warning-class} and \c{-w-warning-class}, respectively; both
+syntaxes work identically.
+
+The option \c{-w+error} or \i\c{-Werror} can be used to treat warnings
+as errors.  This can be controlled on a per warning class basis
+(\c{-w+error=}\e{warning-class} or \c{-Werror=}\e{warning-class});
+if no \e{warning-class} is specified NASM treats it as
+\c{-w+error=all}; the same applies to \c{-w-error} or
+\i\c{-Wno-error},
+of course.
+
+In addition, you can control warnings in the source code itself, using
+the \i\c{[WARNING]} directive.  See \k{asmdir-warning}.
 
 
 \S{opt-v} The \i\c{-v} Option: Display \i{Version} Info
@@ -1001,13 +922,72 @@ is indicated by an asterisk. For example:
 \c     dwarf     elf32 (i386) dwarf debug format for Linux
 
 
-\S{opt-pfix} The \i\c{--prefix} and \i\c{--postfix} Options.
+\S{opt-pfix} The \i\c{--(g|l)prefix}, \i\c{--(g|l)postfix} Options.
 
-The \c{--prefix} and \c{--postfix} options prepend or append
-(respectively) the given argument to all \c{global} or
-\c{extern} variables. E.g. \c{--prefix _} will prepend the
-underscore to all global and external variables, as C sometimes
-(but not always) likes it.
+The \c{--(g)prefix} options prepend the given argument
+to all \c{extern}, \c{common}, \c{static}, and \c{global} symbols, and the
+\c{--lprefix} option prepends to all other symbols. Similarly,
+\c{--(g)postfix} and \c{--lpostfix} options append
+the argument in the exactly same way as the \c{--xxprefix} options does.
+
+Running this:
+
+\c nasm -f macho --gprefix _
+
+is equivalent to place the directive with \c{%pragma macho gprefix _}
+at the start of the file (\k{mangling}). It will prepend the underscore
+to all global and external variables, as C requires it in some, but not all,
+system calling conventions.
+
+\S{opt-pragma} The \i\c{--pragma} Option
+
+NASM accepts an argument as \c{%pragma} option, which is like placing
+a \c{%pragma} preprocess statement at the beginning of the source.
+Running this:
+
+\c nasm -f macho --pragma "macho gprefix _"
+
+is equivalent to the example in \k{opt-pfix}.
+
+
+\S{opt-before} The \i\c{--before} Option
+
+A preprocess statement can be accepted with this option. The example
+shown in \k{opt-pragma} is the same as running this:
+
+\c nasm -f macho --before "%pragma macho gprefix _"
+
+
+\S{opt-limit} The \i\c{--limit-X} Option
+
+This option allows user to setup various maximum values for these:
+
+\b\c{--limit-passes}: Number of maximum allowed passes. Default is
+effectively unlimited.
+
+\b\c{--limit-stalled-passes}: Maximum number of allowed unfinished
+passes. Default is 1000.
+
+\b\c{--limit-macro-levels}: Define maximum depth of macro expansion
+(in preprocess). Default is 1000000.
+
+\b\c{--limit-rep}: Maximum number of allowed preprocessor loop, defined
+under \c{%rep}. Default is 1000000.
+
+\b\c{--limit-eval}: This number sets the boundary condition of allowed
+expression length. Default is 1000000.
+
+\b\c{--limit-lines}: Total number of source lines as allowed to be
+processed. Default is 2000000000.
+
+In example, running this limits the maximum line count to be 1000.
+
+\c nasm --limit-lines 1000
+
+
+\S{opt-keep-all} The \i\c{--keep-all} Option
+
+This option doesn't delete any output files even if an error happens.
 
 
 \S{nasmenv} The \i\c{NASMENV} \i{Environment} Variable
@@ -1321,7 +1301,7 @@ For example:
 \c wordvar:        resw    1               ; reserve a word
 \c realarray       resq    10              ; array of ten reals
 \c ymmval:         resy    1               ; one YMM register
-\c zmmvals:        resz    32              ; 32 ZMM registers 
+\c zmmvals:        resz    32              ; 32 ZMM registers
 
 \S{incbin} \i\c{INCBIN}: Including External \i{Binary Files}
 
@@ -3188,14 +3168,14 @@ variants are also provided.
 
 The conditional assembly construct \c{%ifenv} assembles the
 subsequent code if and only if the environment variable referenced by
-the \c{%!<env>} directive exists.
+the \c{%!}\e{variable} directive exists.
 
 The usual \i\c{%elifenv}, \i\c\{%ifnenv}, and \i\c{%elifnenv}
 variants are also provided.
 
-Just as for \c{%!<env>} the argument should be written as a string if
-it contains characters that would not be legal in an identifier.  See
-\k{getenv}.
+Just as for \c{%!}\e{variable} the argument should be written as a
+string if it contains characters that would not be legal in an
+identifier.  See \k{getenv}.
 
 \H{rep} \i{Preprocessor Loops}\I{repeating code}: \i\c{%rep}
 
@@ -3431,7 +3411,7 @@ top context on the stack. Of course, after a subsequent \c{%push},
 it can then still be accessed by the name \c{%$$localmac}.
 
 
-\S{ctxfallthrough} \i{Context Fall-Through Lookup}
+\S{ctxfallthrough} \i{Context Fall-Through Lookup} \e{(deprecated)}
 
 Context fall-through lookup (automatic searching of outer contexts)
 is a feature that was added in NASM version 0.98.03. Unfortunately,
@@ -3799,16 +3779,16 @@ all file name and line numbers relative to the values specified
 therein.
 
 
-\S{getenv} \i\c{%!}\c{<env>}: Read an environment variable.
+\S{getenv} \i\c{%!}\e{variable}: Read an Environment Variable.
 
-The \c{%!<env>} directive makes it possible to read the value of an
+The \c{%!}\e{variable} directive makes it possible to read the value of an
 environment variable at assembly time. This could, for example, be used
 to store the contents of an environment variable into a string, which
 could be used at some other point in your code.
 
-For example, suppose that you have an environment variable \c{FOO}, and
-you want the contents of \c{FOO} to be embedded in your program. You
-could do that as follows:
+For example, suppose that you have an environment variable \c{FOO},
+and you want the contents of \c{FOO} to be embedded in your program as
+a quoted string. You could do that as follows:
 
 \c %defstr FOO          %!FOO
 
@@ -3819,17 +3799,6 @@ characters, you can use string quotes to surround the name of the
 variable, for example:
 
 \c %defstr C_colon      %!'C:'
-
-
-\H{comment} Comment Blocks: \i\c{%comment}
-
-The \c{%comment} and \c{%endcomment} directives are used to specify
-a block of commented (i.e. unprocessed) code/text. Everything between
-\c{%comment} and \c{%endcomment} will be ignored by the preprocessor.
-
-\c %comment
-\c     ; some code, text or data to be ignored
-\c %endcomment
 
 
 \H{stdmac} \i{Standard Macros}
@@ -4311,7 +4280,7 @@ This packages contains the following floating-point convenience macros:
 \c %define NaN             __QNaN__
 \c %define QNaN            __QNaN__
 \c %define SNaN            __SNaN__
-\c 
+\c
 \c %define float8(x)       __float8__(x)
 \c %define float16(x)      __float16__(x)
 \c %define float32(x)      __float32__(x)
@@ -4334,20 +4303,22 @@ The macros provided are:
 
 These functions calculate the integer logarithm base 2 of their
 argument, considered as an unsigned integer.  The only differences
-between the functions is their behavior if the argument provided is
-not a power of two.
+between the functions is their respective behavior if the argument
+provided is not a power of two.
 
-The function \i\c{ilog2e()} (alias \i\c{ilog2()}) generate an error if
+The function \i\c{ilog2e()} (alias \i\c{ilog2()}) generates an error if
 the argument is not a power of two.
-
-The function \i\c{ilog2w()} generate a warning if the argument is not
-a power of two.
 
 The function \i\c{ilog2f()} rounds the argument down to the nearest
 power of two; if the argument is zero it returns zero.
 
 The function \i\c{ilog2c()} rounds the argument up to the nearest
 power of two.
+
+The functions \i\c{ilog2fw()} (alias \i\c{ilog2w()}) and
+\i\c{ilog2cw()} generate a warning if the argument is not a power of
+two, but otherwise behaves like \c{ilog2f()} and \c{ilog2c()},
+respectively.
 
 
 \C{directive} \i{Assembler Directives}
@@ -4394,6 +4365,9 @@ The most likely reason for using the \c{BITS} directive is to write
 output format defaults to 16-bit mode in anticipation of it being
 used most frequently to write DOS \c{.COM} programs, DOS \c{.SYS}
 device drivers and boot loader software.
+
+The \c{BITS} directive can also be used to generate code for a
+different mode than the standard one for the output format.
 
 You do \e{not} need to specify \c{BITS 32} merely in order to use
 32-bit instructions in a 16-bit DOS program; if you do, the
@@ -4630,8 +4604,12 @@ only in that it can take only one argument at a time: the support
 for multiple arguments is implemented at the preprocessor level.
 
 You can declare the same variable as \c{EXTERN} more than once: NASM
-will quietly ignore the second and later redeclarations. You can't
-declare a variable as \c{EXTERN} as well as something else, though.
+will quietly ignore the second and later redeclarations.
+
+If a variable is declared both \c{GLOBAL} and \c{EXTERN}, or if it is
+declared as \c{EXTERN} and then defined, it will be treated as
+\c{GLOBAL}. If a variable is declared both as \c{COMMON} and
+\c{EXTERN}, it will be treated as \c{COMMON}.
 
 
 \H{global} \i\c{GLOBAL}: \i{Exporting Symbols} to Other Modules
@@ -4641,9 +4619,6 @@ symbol as \c{EXTERN} and refers to it, then in order to prevent
 linker errors, some other module must actually \e{define} the
 symbol and declare it as \c{GLOBAL}. Some assemblers use the name
 \i\c{PUBLIC} for this purpose.
-
-The \c{GLOBAL} directive applying to a symbol must appear \e{before}
-the definition of the symbol.
 
 \c{GLOBAL} uses the same syntax as \c{EXTERN}, except that it must
 refer to symbols which \e{are} defined in the same module as the
@@ -4696,6 +4671,61 @@ specify the alignment requirements of a common variable:
 Once again, like \c{EXTERN} and \c{GLOBAL}, the primitive form of
 \c{COMMON} differs from the user-level form only in that it can take
 only one argument at a time.
+
+\H{static} \i\c{STATIC}: Local Symbols within Modules
+
+Opposite to \c{EXTERN} and \c{GLOBAL}, \c{STATIC} is local symbol, but
+should be named according to the global mangling rules (named by
+analogy with the C keyword \c{static} as applied to functions or
+global variables).
+
+\c static foo
+\c foo:
+\c          ; codes
+
+Unlike \c{GLOBAL}, \c{STATIC} does not allow object formats to accept
+private extensions mentioned in \k{global}.
+
+\H{mangling} \i\c{(G|L)PREFIX}, \i\c{(G|L)POSTFIX}: Mangling Symbols
+
+\c{PREFIX}, \c{GPREFIX}, \c{LPREFIX}, \c{POSTFIX}, \c{GPOSTFIX}, and
+\c{LPOSTFIX} directives can prepend or append the given argument to
+a certain type of symbols. The directive should be as a preprocess
+statement. Each usage is:
+
+\b\c{PREFIX}|\c{GPREFIX}: Prepend the argument to all \c{EXTERN}
+\c{COMMON}, \c{STATIC}, and \c{GLOBAL} symbols
+
+\b\c{LPREFIX}: Prepend the argument to all other symbols
+such as Local Labels, and backend defined symbols
+
+\b\c{POSTFIX}|\c{GPOSTFIX}: Append the argument to all \c{EXTERN}
+\c{COMMON}, \c{STATIC}, and \c{GLOBAL} symbols
+
+\b\c{LPOSTFIX}: Append the argument to all other symbols
+such as Local Labels, and backend defined symbols
+
+This is a macro implemented as a \c{%pragma}:
+
+\c      %pragma macho lprefix L_
+
+Commandline option is also possible. See also \k{opt-pfix}.
+
+
+\H{gen-namespace} \i\c{OUTPUT}, \i\c{DEBUG}: Generic Namespaces
+
+\c{OUTPUT} and \c{DEBUG} are generic \c{%pragma} namespaces that are
+supposed to redirect to the current output and debug formats.
+For example, when mangling local symbols via the generic namespace:
+
+\c      %pragma output gprefix _
+
+This is useful when the directive is needed to be output format
+agnostic.
+
+The example is also euquivalent to this, when the output format is \c{elf}:
+
+\c      %pragma elf gprefix _
 
 
 \H{CPU} \i\c{CPU}: Defining CPU Dependencies
@@ -4770,6 +4800,28 @@ has avoided the use of the brackeded primitive form, (\c{[FLOAT]}).
 
 \c{__FLOAT__} contains the full set of floating-point settings; this
 value can be saved away and invoked later to restore the setting.
+
+
+\H{asmdir-warning} \i\c{[WARNING]}: Enable or disable warnings
+
+The \c{[WARNING]} directive can be used to enable or disable classes
+of warnings in the same way as the \c{-w} option, see \k{opt-w} for
+more details about warning classes.
+
+\b \c{[warning +}\e{warning-class}\c{]} enables warnings for
+   \e{warning-class}.
+
+\b \c{[warning -}\e{warning-class}\c{]} disables warnings for
+   \e{warning-class}.
+
+\b \c{[warning *}\e{warning-class}\c{]} restores \e{warning-class} to
+   the original value, either the default value or as specified on the
+   command line.
+
+The \c{[WARNING]} directive also accepts the \c{all}, \c{error} and
+\c{error=}\e{warning-class} specifiers.
+
+No "user form" (without the brackets) currently exists.
 
 
 \C{outfmt} \i{Output Formats}
@@ -5265,6 +5317,14 @@ also supports default-\c{WRT} specification like \c{EXTERN} does
 \c common  baz     24:wrt data:6
 
 
+\S{objdepend} Embedded File Dependency Information
+
+Since NASM 2.13.02, \c{obj} files contain embedded dependency file
+information.  To suppress the generation of dependencies, use
+
+\c %pragma obj nodepend
+
+
 \H{win32fmt} \i\c{win32}: Microsoft Win32 Object Files
 
 The \c{win32} output format generates Microsoft Win32 object files,
@@ -5427,6 +5487,14 @@ linker version 7.x and later. Presence of \c{@feat.00} symbol and input
 data for "safe exception handler table" causes no backward
 incompatibilities and "safeseh" modules generated by NASM 2.03 and
 later can still be linked by earlier versions or non-Microsoft linkers.
+
+\S{codeview} Debugging formats for Windows
+\I{Windows debugging formats}
+
+The \c{win32} and \c{win64} formats support the Microsoft CodeView
+debugging format.  Currently CodeView version 8 format is supported
+(\i\c{cv8}), but newer versions of the CodeView debugger should be
+able to handle this format as well.
 
 
 \H{win64fmt} \i\c{win64}: Microsoft Win64 Object Files
@@ -5695,11 +5763,107 @@ the \c{info} section type are not supported.
 
 \H{machofmt} \I{Mach-O}\i\c{macho32} and \i\c{macho64}: \i{Mach Object File Format}
 
-The \c{macho32} and \c{macho64} output formts produces \c{Mach-O}
+The \c{macho32} and \c{macho64} output formts produces Mach-O
 object files suitable for linking with the \i{MacOS X} linker.
 \i\c{macho} is a synonym for \c{macho32}.
 
 \c{macho} provides a default output file-name extension of \c{.o}.
+
+\S{machosect} \c{macho} extensions to the \c{SECTION} Directive
+\I{SECTION, macho extensions to}
+
+The \c{macho} output format specifies section names in the format
+"\e{segment}\c{,}\e{section}".  No spaces are allowed around the
+comma.  The following flags can also be specified:
+
+\b \c{data} - this section contains initialized data items
+
+\b \c{code} - this section contains code exclusively
+
+\b \c{mixed} - this section contains both code and data
+
+\b \c{bss} - this section is uninitialized and filled with zero
+
+\b \c{zerofill} - same as \c{bss}
+
+\b \c{no_dead_strip} - inhibit dead code stripping for this section
+
+\b \c{live_support} - set the live support flag for this section
+
+\b \c{strip_static_syms} - strip static symbols for this section
+
+\b \c{debug} - this section contains debugging information
+
+\b \c{align=}\e{alignment} - specify section alignment
+
+The default is \c{data}, unless the section name is \c{__text} or
+\c{__bss} in which case the default is \c{text} or \c{bss},
+respectively.
+
+For compatibility with other Unix platforms, the following standard
+names are also supported:
+
+\c .text    = __TEXT,__text  text
+\c .rodata  = __DATA,__const data
+\c .data    = __DATA,__data  data
+\c .bss     = __DATA,__bss   bss
+
+If the \c{.rodata} section contains no relocations, it is instead put
+into the \c{__TEXT,__const} section unless this section has already
+been specified explicitly.  However, it is probably better to specify
+\c{__TEXT,__const} and \c{__DATA,__const} explicitly as appropriate.
+
+\S{machotls} \i{Thread Local Storage in Mach-O}\I{TLS}: \c{macho} special
+symbols and \i\c{WRT}
+
+Mach-O defines the following special symbols that can be used on the
+right-hand side of the \c{WRT} operator:
+
+\b \c{..tlvp} is used to specify access to thread-local storage.
+
+\b \c{..gotpcrel} is used to specify references to the Global Offset
+   Table.  The GOT is supported in the \c{macho64} format only.
+
+\S{macho-ssvs} \c{macho} specfic directive \i\c{subsections_via_symbols}
+
+The directive \c{subsections_via_symbols} sets the
+\c{MH_SUBSECTIONS_VIA_SYMBOLS} flag in the Mach-O header, which tells
+the linker that the symbols in the file matches the conventions
+required to allow for link-time dead code elimination.
+
+This directive takes no arguments.
+
+This is a macro implemented as a \c{%pragma}.  It can also be
+specified in its \c{%pragma} form, in which case it will not affect
+non-Mach-O builds of the same source code:
+
+\c      %pragma macho subsections_via_symbols
+
+\S{macho-ssvs} \c{macho} specfic directive \i\c{no_dead_strip}
+
+The directive \c{no_dead_strip} sets the Mach-O \c{SH_NO_DEAD_STRIP}
+section flag on the section containing a a specific symbol.  This
+directive takes a list of symbols as its arguments.
+
+This is a macro implemented as a \c{%pragma}.  It can also be
+specified in its \c{%pragma} form, in which case it will not affect
+non-Mach-O builds of the same source code:
+
+\c      %pragma macho no_dead_strip symbol...
+
+\S{macho-pext} \c{macho} specific extensions to the \c{GLOBAL}
+Directive: \i\c{private_extern}
+
+The directive extension to \c{GLOBAL} marks the symbol with limited
+global scope. For example, you can specify the global symbol with
+this extension:
+
+\c global foo:private_extern
+\c foo:
+\c          ; codes
+
+Using with static linker will clear the private extern attribute.
+But linker option like \c{-keep_private_externs} can avoid it.
 
 \H{elffmt} \i\c{elf32}, \i\c{elf64}, \i\c{elfx32}: \I{ELF}\I{linux, elf}\i{Executable and Linkable
 Format} Object Files
@@ -5715,13 +5879,14 @@ ABI with the CPU in 64-bit mode.
 
 \S{abisect} ELF specific directive \i\c{osabi}
 
-The ELF header specifies the application binary interface for the target operating system (OSABI).
-This field can be set by using the \c{osabi} directive with the numeric value (0-255) of the target
- system. If this directive is not used, the default value will be "UNIX System V ABI" (0) which will work on
- most systems which support ELF.
+The ELF header specifies the application binary interface for the
+target operating system (OSABI).  This field can be set by using the
+\c{osabi} directive with the numeric value (0-255) of the target
+system. If this directive is not used, the default value will be "UNIX
+System V ABI" (0) which will work on most systems which support ELF.
 
-\S{elfsect} \c{elf} Extensions to the \c{SECTION}
-Directive\I{SECTION, elf extensions to}
+\S{elfsect} \c{elf} extensions to the \c{SECTION} Directive
+\I{SECTION, elf extensions to}
 
 Like the \c{obj} format, \c{elf} allows you to specify additional
 information on the \c{SECTION} directive line, to control the type
@@ -5779,14 +5944,8 @@ qualifiers are:
  Please note that section names are case sensitive.)
 
 
-\S{elfwrt} \i{Position-Independent Code}\I{PIC}: \c{elf} Special
+\S{elfwrt} \i{Position-Independent Code}\I{PIC}: \c{macho} Special
 Symbols and \i\c{WRT}
-
-The \c{ELF} specification contains enough features to allow
-position-independent code (PIC) to be written, which makes \i{ELF
-shared libraries} very flexible. However, it also means NASM has to
-be able to generate a variety of ELF specific relocation types in ELF
-object files, if it is to be an assembler which can write PIC.
 
 Since \c{ELF} does not support segment-base references, the \c{WRT}
 operator is not used for its normal purpose; therefore NASM's
@@ -5836,7 +5995,7 @@ peculiarity of the dynamic linker.
 A fuller explanation of how to use these relocation types to write
 shared libraries entirely in NASM is given in \k{picdll}.
 
-\S{elftls} \i{Thread Local Storage}\I{TLS}: \c{elf} Special
+\S{elftls} \i{Thread Local Storage in ELF}\I{TLS}: \c{elf} Special
 Symbols and \i\c{WRT}
 
 \b In ELF32 mode, referring to an external or global symbol using
@@ -5845,8 +6004,8 @@ causes the linker to build an entry \e{in} the GOT containing the
 offset of the symbol within the TLS block, so you can access the value
 of the symbol with code such as:
 
-\c 	  mov  eax,[tid wrt ..tlsie]
-\c 	  mov  [gs:eax],ebx
+\c	  mov  eax,[tid wrt ..tlsie]
+\c	  mov  [gs:eax],ebx
 
 
 \b In ELF64 or ELFx32 mode, referring to an external or global symbol using
@@ -5855,7 +6014,7 @@ causes the linker to build an entry \e{in} the GOT containing the
 offset of the symbol within the TLS block, so you can access the value
 of the symbol with code such as:
 
-\c 	  mov	rax,[rel tid wrt ..gottpoff]
+\c	  mov	rax,[rel tid wrt ..gottpoff]
 \c	  mov	rcx,[fs:rax]
 
 
@@ -6094,11 +6253,6 @@ a hint as to where to find requested symbols.
 
 \H{dbgfmt} \i\c{dbg}: Debugging Format
 
-The \c{dbg} output format is not built into NASM in the default
-configuration. If you are building your own NASM executable from the
-sources, you can define \i\c{OF_DBG} in \c{output/outform.h} or on the
-compiler command line, and obtain the \c{dbg} output format.
-
 The \c{dbg} format does not output an object file as such; instead,
 it outputs a text file which contains a complete list of all the
 transactions between the main body of NASM and the output-format
@@ -6138,6 +6292,15 @@ yourself (using \c{EXTERN}, for example) if you really need to get a
 
 \c{dbg} accepts any section name and any directives at all, and logs
 them all to its output file.
+
+\c{dbg} accepts and logs any \c{%pragma}, but the specific
+\c{%pragma}:
+
+\c      %pragma dbg maxdump <size>
+
+where \c{<size>} is either a number or \c{unlimited}, can be used to
+control the maximum size for dumping the full contents of a
+\c{rawdata} output object.
 
 
 \C{16bit} Writing 16-bit Code (DOS, Windows 3/3.1)
@@ -7674,10 +7837,15 @@ platforms pass arguments in registers rather than on the stack.
 Furthermore, 64-bit platforms use SSE2 by default for floating point.
 Please see the ABI documentation for your platform.
 
-64-bit platforms differ in the sizes of the fundamental datatypes, not
-just from 32-bit platforms but from each other.  If a specific size
-data type is desired, it is probably best to use the types defined in
-the Standard C header \c{<inttypes.h>}.
+64-bit platforms differ in the sizes of the C/C++ fundamental
+datatypes, not just from 32-bit platforms but from each other.  If a
+specific size data type is desired, it is probably best to use the
+types defined in the standard C header \c{<inttypes.h>}.
+
+All known 64-bit platforms except some embedded platforms require that
+the stack is 16-byte aligned at the entry to a function.  In order to
+enforce that, the stack pointer (\c{RSP}) needs to be aligned on an
+\c{odd} multiple of 8 bytes before the \c{CALL} instruction.
 
 In 64-bit mode, the default instruction size is still 32 bits.  When
 loading a value into a 32-bit register (but not an 8- or 16-bit
@@ -7725,12 +7893,30 @@ immediate as \c{DWORD}:
 
 The length of these instructions are 10, 5 and 7 bytes, respectively.
 
+If optimization is enabled and NASM can determine at assembly time
+that a shorter instruction will suffice, the shorter instruction will
+be emitted unless of course \c{STRICT QWORD} or \c{STRICT DWORD} is
+specified (see \k{strict}):
+
+\c      mov rax,1		; Assembles as "mov eax,1" (5 bytes)
+\c      mov rax,strict qword 1  ; Full 10-byte instruction
+\c	mov rax,strict dword 1	; 7-byte instruction
+\c      mov rax,symbol          ; 10 bytes, not known at assembly time
+\c      lea rax,[rel symbol]    ; 7 bytes, usually preferred by the ABI
+
+Note that \c{lea rax,[rel symbol]} is position-independent, whereas
+\c{mov rax,symbol} is not.  Most ABIs prefer or even require
+position-independent code in 64-bit mode.  However, the \c{MOV}
+instruction is able to reference a symbol anywhere in the 64-bit
+address space, whereas \c{LEA} is only able to access a symbol within
+within 2 GB of the instruction itself (see below.)
+
 The only instructions which take a full \I{64-bit displacement}64-bit
 \e{displacement} is loading or storing, using \c{MOV}, \c{AL}, \c{AX},
 \c{EAX} or \c{RAX} (but no other registers) to an absolute 64-bit address.
 Since this is a relatively rarely used instruction (64-bit code generally uses
 relative addressing), the programmer has to explicitly declare the
-displacement size as \c{QWORD}:
+displacement size as \c{ABS QWORD}:
 
 \c      default abs
 \c
@@ -7750,9 +7936,10 @@ a zero-extended absolute displacement can access from 0 to 4 GB.
 
 \H{unix64} Interfacing to 64-bit C Programs (Unix)
 
-On Unix, the 64-bit ABI is defined by the document:
+On Unix, the 64-bit ABI as well as the x32 ABI (32-bit ABI with the
+CPU in 64-bit mode) is defined by the documents at:
 
-\W{http://www.nasm.us/links/unix64abi}\c{http://www.nasm.us/links/unix64abi}
+\W{http://www.nasm.us/abi/unix64}\c{http://www.nasm.us/abi/unix64}
 
 Although written for AT&T-syntax assembly, the concepts apply equally
 well for NASM-style assembly.  What follows is a simplified summary.
@@ -7766,9 +7953,11 @@ calls, and thus are available for use by the function without saving.
 Integer return values are passed in \c{RAX} and \c{RDX}, in that order.
 
 Floating point is done using SSE registers, except for \c{long
-double}.  Floating-point arguments are passed in \c{XMM0} to \c{XMM7};
-return is \c{XMM0} and \c{XMM1}.  \c{long double} are passed on the
-stack, and returned in \c{ST0} and \c{ST1}.
+double}, which is 80 bits (\c{TWORD}) on most platforms (Android is
+one exception; there \c{long double} is 64 bits and treated the same
+as \c{double}.)  Floating-point arguments are passed in \c{XMM0} to
+\c{XMM7}; return is \c{XMM0} and \c{XMM1}.  \c{long double} are passed
+on the stack, and returned in \c{ST0} and \c{ST1}.
 
 All SSE and x87 registers are destroyed by function calls.
 
@@ -7782,9 +7971,9 @@ Integer and SSE register arguments are counted separately, so for the case of
 
 \H{win64} Interfacing to 64-bit C Programs (Win64)
 
-The Win64 ABI is described at:
+The Win64 ABI is described by the document at:
 
-\W{http://www.nasm.us/links/win64abi}\c{http://www.nasm.us/links/win64abi}
+\W{http://www.nasm.us/abi/win64}\c{http://www.nasm.us/abi/win64}
 
 What follows is a simplified summary.
 
@@ -7811,9 +8000,8 @@ Integer and SSE register arguments are counted together, so for the case of
 \C{trouble} Troubleshooting
 
 This chapter describes some of the common problems that users have
-been known to encounter with NASM, and answers them. It also gives
-instructions for reporting bugs in NASM if you find a difficulty
-that isn't listed here.
+been known to encounter with NASM, and answers them.  If you think you
+have found a bug in NASM, please see \k{bugs}.
 
 
 \H{problems} Common Problems
@@ -7916,93 +8104,6 @@ in which \c{$} and \c{$$} are offsets from the same section base,
 and so their difference is a pure number. This will solve the
 problem and generate sensible code.
 
-
-\H{bugs} \i{Bugs}\I{reporting bugs}
-
-We have never yet released a version of NASM with any \e{known}
-bugs. That doesn't usually stop there being plenty we didn't know
-about, though. Any that you find should be reported firstly via the
-\i\c{bugtracker} at
-\W{http://www.nasm.us/}\c{http://www.nasm.us/}
-(click on "Bug Tracker"), or if that fails then through one of the
-contacts in \k{contact}.
-
-Please read \k{qstart} first, and don't report the bug if it's
-listed in there as a deliberate feature. (If you think the feature
-is badly thought out, feel free to send us reasons why you think it
-should be changed, but don't just send us mail saying `This is a
-bug' if the documentation says we did it on purpose.) Then read
-\k{problems}, and don't bother reporting the bug if it's listed
-there.
-
-If you do report a bug, \e{please} give us all of the following
-information:
-
-\b What operating system you're running NASM under. DOS, Linux,
-NetBSD, Win16, Win32, VMS (I'd be impressed), whatever.
-
-\b If you're running NASM under DOS or Win32, tell us whether you've
-compiled your own executable from the DOS source archive, or whether
-you were using the standard distribution binaries out of the
-archive. If you were using a locally built executable, try to
-reproduce the problem using one of the standard binaries, as this
-will make it easier for us to reproduce your problem prior to fixing
-it.
-
-\b Which version of NASM you're using, and exactly how you invoked
-it. Give us the precise command line, and the contents of the
-\c{NASMENV} environment variable if any.
-
-\b Which versions of any supplementary programs you're using, and
-how you invoked them. If the problem only becomes visible at link
-time, tell us what linker you're using, what version of it you've
-got, and the exact linker command line. If the problem involves
-linking against object files generated by a compiler, tell us what
-compiler, what version, and what command line or options you used.
-(If you're compiling in an IDE, please try to reproduce the problem
-with the command-line version of the compiler.)
-
-\b If at all possible, send us a NASM source file which exhibits the
-problem. If this causes copyright problems (e.g. you can only
-reproduce the bug in restricted-distribution code) then bear in mind
-the following two points: firstly, we guarantee that any source code
-sent to us for the purposes of debugging NASM will be used \e{only}
-for the purposes of debugging NASM, and that we will delete all our
-copies of it as soon as we have found and fixed the bug or bugs in
-question; and secondly, we would prefer \e{not} to be mailed large
-chunks of code anyway. The smaller the file, the better. A
-three-line sample file that does nothing useful \e{except}
-demonstrate the problem is much easier to work with than a
-fully fledged ten-thousand-line program. (Of course, some errors
-\e{do} only crop up in large files, so this may not be possible.)
-
-\b A description of what the problem actually \e{is}. `It doesn't
-work' is \e{not} a helpful description! Please describe exactly what
-is happening that shouldn't be, or what isn't happening that should.
-Examples might be: `NASM generates an error message saying Line 3
-for an error that's actually on Line 5'; `NASM generates an error
-message that I believe it shouldn't be generating at all'; `NASM
-fails to generate an error message that I believe it \e{should} be
-generating'; `the object file produced from this source code crashes
-my linker'; `the ninth byte of the output file is 66 and I think it
-should be 77 instead'.
-
-\b If you believe the output file from NASM to be faulty, send it to
-us. That allows us to determine whether our own copy of NASM
-generates the same file, or whether the problem is related to
-portability issues between our development platforms and yours. We
-can handle binary files mailed to us as MIME attachments, uuencoded,
-and even BinHex. Alternatively, we may be able to provide an FTP
-site you can upload the suspect files to; but mailing them is easier
-for us.
-
-\b Any other information or data files that might be helpful. If,
-for example, the problem involves NASM failing to generate an object
-file while TASM can generate an equivalent file without trouble,
-then send us \e{both} object files, so we can see what TASM is doing
-differently from us.
-
-
 \A{ndisasm} \i{Ndisasm}
 
                   The Netwide Disassembler, NDISASM
@@ -8021,13 +8122,6 @@ disassemblies of \e{binary} source files. NDISASM does not have any
 understanding of object file formats, like \c{objdump}, and it will
 not understand \c{DOS .EXE} files like \c{debug} will. It just
 disassembles.
-
-
-\H{ndisstart} Getting Started: Installation
-
-See \k{install} for installation instructions. NDISASM, like NASM,
-has a \c{man page} which you may want to put somewhere useful, if you
-are on a Unix system.
 
 
 \H{ndisrun} Running NDISASM
@@ -8178,16 +8272,6 @@ data section which wouldn't contain anything you wanted to see
 anyway.
 
 
-\H{ndisbugs} Bugs and Improvements
-
-There are no known bugs. However, any you find, with patches if
-possible, should be sent to
-\W{mailto:nasm-bugs@lists.sourceforge.net}\c{nasm-bugs@lists.sourceforge.net}, or to the
-developer's site at
-\W{http://www.nasm.us/}\c{http://www.nasm.us/}
-and we'll try to fix them. Feel free to send contributions and
-new features as well.
-
 \A{inslist} \i{Instruction List}
 
 \H{inslistintro} Introduction
@@ -8203,3 +8287,156 @@ column shows the processor type in which the instruction was introduced and,
 
 \& changes.src
 
+\A{source} Building NASM from Source
+
+The source code for NASM is available from our website,
+\W{http://www.nasm.us/}{http://wwww.nasm.us/}, see \k{website}.
+
+\H{tarball} Building from a Source Archive
+
+The source archives available on the web site should be capable of
+building on a number of platforms.  This is the recommended method for
+building NASM to support platforms for which executables are not
+available.
+
+On a system which has Unix shell (\c{sh}), run:
+
+\c      sh configure
+\c      make everything
+
+A number of options can be passed to \c{configure}; see
+\c{sh configure --help}.
+
+A set of Makefiles for some other environments are also available;
+please see the file \c{Mkfiles/README}.
+
+To build the installer for the Windows platform, you will need the
+\i\e{Nullsoft Scriptable Installer}, \i{NSIS}, installed.
+
+To build the documentation, you will need a set of additional tools.
+The documentation is not likely to be able to build on non-Unix
+systems.
+
+\H{git} Building from the \i\c{git} Repository
+
+The NASM development tree is kept in a source code repository using
+the \c{git} distributed source control system.  The link is available
+on the website.  This is recommended only to participate in the
+development of NASM or to assist with testing the development code.
+
+To build NASM from the \c{git} repository you will need a Perl and, if
+building on a Unix system, GNU autoconf.
+
+To build on a Unix system, run:
+
+\c      sh autogen.sh
+
+to create the \c{configure} script and then build as listed above.
+
+\A{contact} Contact Information
+
+\H{website} Website
+
+NASM has a \i{website} at
+\W{http://www.nasm.us/}\c{http://www.nasm.us/}.
+
+\i{New releases}, \i{release candidates}, and \I{snapshots, daily
+development}\i{daily development snapshots} of NASM are available from
+the official web site in source form as well as binaries for a number
+of common platforms.
+
+\S{forums} User Forums
+
+Users of NASM may find the Forums on the website useful.  These are,
+however, not frequented much by the developers of NASM, so they are
+not suitable for reporting bugs.
+
+\S{develcom} Development Community
+
+The development of NASM is coordinated primarily though the
+\i\c{nasm-devel} mailing list.  If you wish to participate in
+development of NASM, please join this mailing list.  Subscription
+links and archives of past posts are available on the website.
+
+\H{bugs} \i{Reporting Bugs}\I{bugs}
+
+To report bugs in NASM, please use the \i{bug tracker} at
+\W{http://www.nasm.us/}\c{http://www.nasm.us/} (click on "Bug
+Tracker"), or if that fails then through one of the contacts in
+\k{website}.
+
+Please read \k{qstart} first, and don't report the bug if it's
+listed in there as a deliberate feature. (If you think the feature
+is badly thought out, feel free to send us reasons why you think it
+should be changed, but don't just send us mail saying `This is a
+bug' if the documentation says we did it on purpose.) Then read
+\k{problems}, and don't bother reporting the bug if it's listed
+there.
+
+If you do report a bug, \e{please} make sure your bug report includes
+the following information:
+
+\b What operating system you're running NASM under.  Linux,
+FreeBSD, NetBSD, MacOS X, Win16, Win32, Win64, MS-DOS, OS/2, VMS,
+whatever.
+
+\b If you compiled your own executable from a source archive, compiled
+your own executable from \c{git}, used the standard distribution
+binaries from the website, or got an executable from somewhere else
+(e.g. a Linux distribution.) If you were using a locally built
+executable, try to reproduce the problem using one of the standard
+binaries, as this will make it easier for us to reproduce your problem
+prior to fixing it.
+
+\b Which version of NASM you're using, and exactly how you invoked
+it. Give us the precise command line, and the contents of the
+\c{NASMENV} environment variable if any.
+
+\b Which versions of any supplementary programs you're using, and
+how you invoked them. If the problem only becomes visible at link
+time, tell us what linker you're using, what version of it you've
+got, and the exact linker command line. If the problem involves
+linking against object files generated by a compiler, tell us what
+compiler, what version, and what command line or options you used.
+(If you're compiling in an IDE, please try to reproduce the problem
+with the command-line version of the compiler.)
+
+\b If at all possible, send us a NASM source file which exhibits the
+problem. If this causes copyright problems (e.g. you can only
+reproduce the bug in restricted-distribution code) then bear in mind
+the following two points: firstly, we guarantee that any source code
+sent to us for the purposes of debugging NASM will be used \e{only}
+for the purposes of debugging NASM, and that we will delete all our
+copies of it as soon as we have found and fixed the bug or bugs in
+question; and secondly, we would prefer \e{not} to be mailed large
+chunks of code anyway. The smaller the file, the better. A
+three-line sample file that does nothing useful \e{except}
+demonstrate the problem is much easier to work with than a
+fully fledged ten-thousand-line program. (Of course, some errors
+\e{do} only crop up in large files, so this may not be possible.)
+
+\b A description of what the problem actually \e{is}. `It doesn't
+work' is \e{not} a helpful description! Please describe exactly what
+is happening that shouldn't be, or what isn't happening that should.
+Examples might be: `NASM generates an error message saying Line 3
+for an error that's actually on Line 5'; `NASM generates an error
+message that I believe it shouldn't be generating at all'; `NASM
+fails to generate an error message that I believe it \e{should} be
+generating'; `the object file produced from this source code crashes
+my linker'; `the ninth byte of the output file is 66 and I think it
+should be 77 instead'.
+
+\b If you believe the output file from NASM to be faulty, send it to
+us. That allows us to determine whether our own copy of NASM
+generates the same file, or whether the problem is related to
+portability issues between our development platforms and yours. We
+can handle binary files mailed to us as MIME attachments, uuencoded,
+and even BinHex. Alternatively, we may be able to provide an FTP
+site you can upload the suspect files to; but mailing them is easier
+for us.
+
+\b Any other information or data files that might be helpful. If,
+for example, the problem involves NASM failing to generate an object
+file while TASM can generate an equivalent file without trouble,
+then send us \e{both} object files, so we can see what TASM is doing
+differently from us.
