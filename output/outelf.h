@@ -37,7 +37,7 @@
 #ifndef OUTPUT_OUTELF_H
 #define OUTPUT_OUTELF_H
 
-#include "output/elf.h"
+#include "elf.h"
 #include "rbtree.h"
 #include "saa.h"
 
@@ -50,10 +50,7 @@
 /* alignment of sections in file */
 #define SEC_FILEALIGN 16
 
-/* this stuff is needed for the stabs debugging format */
-#define TY_STABSSYMLIN 0x40     /* ouch */
-
-/* this stuff is needed for the dwarf debugging format */
+/* this stuff is needed for the dwarf/stabs debugging format */
 #define TY_DEBUGSYMLIN 0x40     /* internal call to debug_out */
 
 /* Known sections with nonstandard defaults */
@@ -105,11 +102,6 @@ struct stabentry {
 
 extern uint8_t elf_osabi;
 extern uint8_t elf_abiver;
-
-int elf_directive(enum directives directive, char *value, int pass);
-void elf_section_attrib(char *name, char *attr, int pass,
-			uint32_t *flags_and, uint32_t *flags_or,
-			uint64_t *align, int *type);
 
 #define WRITE_STAB(p,n_strx,n_type,n_other,n_desc,n_value)  \
     do {                                                    \

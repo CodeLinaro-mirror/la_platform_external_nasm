@@ -33,7 +33,7 @@
 
 #include "nasm.h"
 #include "nasmlib.h"
-#include "output/outlib.h"
+#include "outlib.h"
 
 void null_debug_init(void)
 {
@@ -77,7 +77,7 @@ void null_debug_cleanup(void)
 {
 }
 
-struct dfmt null_debug_form = {
+const struct dfmt null_debug_form = {
     "Null debug format",
     "null",
     null_debug_init,
@@ -86,7 +86,8 @@ struct dfmt null_debug_form = {
     null_debug_directive,
     null_debug_typevalue,
     null_debug_output,
-    null_debug_cleanup
+    null_debug_cleanup,
+    NULL                        /* pragma list */
 };
 
-struct dfmt *null_debug_arr[2] = { &null_debug_form, NULL };
+const struct dfmt * const null_debug_arr[2] = { &null_debug_form, NULL };

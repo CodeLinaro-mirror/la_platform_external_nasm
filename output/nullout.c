@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------- *
  *   
- *   Copyright 1996-2009 The NASM Authors - All Rights Reserved
+ *   Copyright 1996-2018 The NASM Authors - All Rights Reserved
  *   See the file AUTHORS included with the NASM distribution for
  *   the specific copyright holders.
  *
@@ -33,25 +33,29 @@
 
 #include "nasm.h"
 #include "nasmlib.h"
-#include "output/outlib.h"
+#include "outlib.h"
 
-int null_setinfo(enum geninfo type, char **string)
-{
-    (void)type;
-    (void)string;
-    return 0;
-}
-
-int null_directive(enum directives directive, char *value, int pass)
+enum directive_result
+null_directive(enum directive directive, char *value, int pass)
 {
     (void)directive;
     (void)value;
     (void)pass;
-    return 0;
+    return DIRR_UNKNOWN;
 }
 
 void null_sectalign(int32_t seg, unsigned int value)
 {
     (void)seg;
     (void)value;
+}
+
+void null_reset(void)
+{
+    /* Nothing to do */
+}
+
+int32_t null_segbase(int32_t segment)
+{
+    return segment;
 }

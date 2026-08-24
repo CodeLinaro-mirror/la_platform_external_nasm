@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------- *
  *
- *   Copyright 1996-2014 The NASM Authors - All Rights Reserved
+ *   Copyright 1996-2017 The NASM Authors - All Rights Reserved
  *   See the file AUTHORS included with the NASM distribution for
  *   the specific copyright holders.
  *
@@ -43,16 +43,17 @@
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
-#include <inttypes.h>
 
 #include "nasm.h"
 #include "nasmlib.h"
+#include "ilog2.h"
+#include "error.h"
 #include "saa.h"
 #include "raa.h"
 #include "eval.h"
-#include "output/outform.h"
-#include "output/outlib.h"
-#include "output/pecoff.h"
+#include "outform.h"
+#include "outlib.h"
+#include "pecoff.h"
 
 #if defined(OF_COFF) || defined(OF_WIN32) || defined(OF_WIN64)
 
@@ -100,47 +101,10 @@
  */
 
 /* Flag which version of COFF we are currently outputting. */
-static bool win32, win64;
+bool win32, win64;
 
 static int32_t imagebase_sect;
 #define WRT_IMAGEBASE "..imagebase"
-
-struct Reloc {
-    struct Reloc *next;
-    int32_t address;            /* relative to _start_ of section */
-    int32_t symbol;             /* symbol number */
-    enum {
-        SECT_SYMBOLS,
-        ABS_SYMBOL,
-        REAL_SYMBOLS
-    } symbase;                  /* relocation for symbol number :) */
-    int16_t type;
-};
-
-struct Symbol {
-    char name[9];
-    int32_t strpos;             /* string table position of name */
-    int32_t value;              /* address, or COMMON variable size */
-    int section;                /* section number where it's defined
-                                 * - in COFF codes, not NASM codes */
-    bool is_global;             /* is it a global symbol or not? */
-    int16_t type;               /* 0 - notype, 0x20 - function */
-    int32_t namlen;             /* full name length */
-};
-
-static char coff_infile[FILENAME_MAX];
-
-struct Section {
-    struct SAA *data;
-    uint32_t len;
-    int nrelocs;
-    int32_t index;
-    struct Reloc *head, **tail;
-    uint32_t flags;             /* section flags */
-    char *name;
-    int32_t namepos;            /* Offset of name into the strings table */
-    int32_t pos, relpos;
-};
 
 /*
  * Some common section flags by default
@@ -198,11 +162,12 @@ struct Section {
 #define RDATA_FLAGS     ((win32 | win64) ? RDATA_FLAGS_WIN : RDATA_FLAGS_DOS)
 
 #define SECT_DELTA 32
-static struct Section **sects;
-static int nsects, sectlen;
+struct coff_Section **coff_sects;
+static int sectlen;
+int coff_nsects;
 
-static struct SAA *syms;
-static uint32_t nsyms;
+struct SAA *coff_syms;
+uint32_t coff_nsyms;
 
 static int32_t def_seg;
 
@@ -210,14 +175,14 @@ static int initsym;
 
 static struct RAA *bsym, *symval;
 
-static struct SAA *strs;
+struct SAA *coff_strs;
 static uint32_t strslen;
 
 static void coff_gen_init(void);
-static void coff_sect_write(struct Section *, const uint8_t *, uint32_t);
+static void coff_sect_write(struct coff_Section *, const uint8_t *, uint32_t);
 static void coff_write(void);
 static void coff_section_header(char *, int32_t, int32_t, int32_t, int32_t, int32_t, int, int32_t);
-static void coff_write_relocs(struct Section *);
+static void coff_write_relocs(struct coff_Section *);
 static void coff_write_symbols(void);
 
 static void coff_win32_init(void)
@@ -229,12 +194,11 @@ static void coff_win32_init(void)
 
 static void coff_win64_init(void)
 {
-    maxbits = 64;
     win32 = false;
     win64 = true;
     coff_gen_init();
     imagebase_sect = seg_alloc()+1;
-    define_label(WRT_IMAGEBASE, imagebase_sect, 0, NULL, false, false);
+    backend_label(WRT_IMAGEBASE, imagebase_sect, 0);
 }
 
 static void coff_std_init(void)
@@ -246,46 +210,46 @@ static void coff_std_init(void)
 static void coff_gen_init(void)
 {
 
-    sects = NULL;
-    nsects = sectlen = 0;
-    syms = saa_init(sizeof(struct Symbol));
-    nsyms = 0;
+    coff_sects = NULL;
+    coff_nsects = sectlen = 0;
+    coff_syms = saa_init(sizeof(struct coff_Symbol));
+    coff_nsyms = 0;
     bsym = raa_init();
     symval = raa_init();
-    strs = saa_init(1);
+    coff_strs = saa_init(1);
     strslen = 0;
     def_seg = seg_alloc();
 }
 
-static void coff_cleanup(int debuginfo)
+static void coff_cleanup(void)
 {
-    struct Reloc *r;
+    struct coff_Reloc *r;
     int i;
 
-    (void)debuginfo;
+    dfmt->cleanup();
 
     coff_write();
-    for (i = 0; i < nsects; i++) {
-        if (sects[i]->data)
-            saa_free(sects[i]->data);
-        while (sects[i]->head) {
-            r = sects[i]->head;
-            sects[i]->head = sects[i]->head->next;
+    for (i = 0; i < coff_nsects; i++) {
+        if (coff_sects[i]->data)
+            saa_free(coff_sects[i]->data);
+        while (coff_sects[i]->head) {
+            r = coff_sects[i]->head;
+            coff_sects[i]->head = coff_sects[i]->head->next;
             nasm_free(r);
         }
-        nasm_free(sects[i]->name);
-        nasm_free(sects[i]);
+        nasm_free(coff_sects[i]->name);
+        nasm_free(coff_sects[i]);
     }
-    nasm_free(sects);
-    saa_free(syms);
+    nasm_free(coff_sects);
+    saa_free(coff_syms);
     raa_free(bsym);
     raa_free(symval);
-    saa_free(strs);
+    saa_free(coff_strs);
 }
 
-static int coff_make_section(char *name, uint32_t flags)
+int coff_make_section(char *name, uint32_t flags)
 {
-    struct Section *s;
+    struct coff_Section *s;
     size_t namelen;
 
     s = nasm_zalloc(sizeof(*s));
@@ -302,7 +266,7 @@ static int coff_make_section(char *name, uint32_t flags)
     if (namelen > 8) {
         if (win32 || win64) {
             s->namepos = strslen + 4;
-            saa_wbytes(strs, name, namelen + 1);
+            saa_wbytes(coff_strs, name, namelen + 1);
             strslen += namelen + 1;
         } else {
             namelen = 8;
@@ -313,13 +277,13 @@ static int coff_make_section(char *name, uint32_t flags)
     s->name[namelen] = '\0';
     s->flags = flags;
 
-    if (nsects >= sectlen) {
+    if (coff_nsects >= sectlen) {
         sectlen += SECT_DELTA;
-        sects = nasm_realloc(sects, sectlen * sizeof(*sects));
+        coff_sects = nasm_realloc(coff_sects, sectlen * sizeof(*coff_sects));
     }
-    sects[nsects++] = s;
+    coff_sects[coff_nsects++] = s;
 
-    return nsects - 1;
+    return coff_nsects - 1;
 }
 
 static inline int32_t coff_sectalign_flags(unsigned int align)
@@ -341,10 +305,9 @@ static int32_t coff_section_names(char *name, int pass, int *bits)
             *bits = 64;
         else
             *bits = 32;
-    }
 
-    if (!name)
         return def_seg;
+    }
 
     p = name;
     while (*p && !nasm_isspace(*p))
@@ -418,10 +381,10 @@ static int32_t coff_section_names(char *name, int pass, int *bits)
         }
     }
 
-    for (i = 0; i < nsects; i++)
-        if (!strcmp(name, sects[i]->name))
+    for (i = 0; i < coff_nsects; i++)
+        if (!strcmp(name, coff_sects[i]->name))
             break;
-    if (i == nsects) {
+    if (i == coff_nsects) {
         if (!flags) {
             if (!strcmp(name, ".data"))
                 flags = DATA_FLAGS;
@@ -438,56 +401,56 @@ static int32_t coff_section_names(char *name, int pass, int *bits)
         }
         i = coff_make_section(name, flags);
         if (flags)
-            sects[i]->flags = flags;
-        sects[i]->flags &= align_and;
-        sects[i]->flags |= align_or;
+            coff_sects[i]->flags = flags;
+        coff_sects[i]->flags &= align_and;
+        coff_sects[i]->flags |= align_or;
     } else if (pass == 1) {
         /* Check if any flags are specified */
         if (flags) {
             unsigned int align_flags = flags & IMAGE_SCN_ALIGN_MASK;
 
             /* Warn if non-alignment flags differ */
-            if ((flags ^ sects[i]->flags) & ~IMAGE_SCN_ALIGN_MASK) {
+            if ((flags ^ coff_sects[i]->flags) & ~IMAGE_SCN_ALIGN_MASK) {
                 nasm_error(ERR_WARNING, "section attributes ignored on"
                     " redeclaration of section `%s'", name);
             }
             /* Check if alignment might be needed */
             if (align_flags > IMAGE_SCN_ALIGN_1BYTES) {
-                unsigned int sect_align_flags = sects[i]->flags & IMAGE_SCN_ALIGN_MASK;
+                unsigned int sect_align_flags = coff_sects[i]->flags & IMAGE_SCN_ALIGN_MASK;
 
                 /* Compute the actual alignment */
                 unsigned int align = 1u << ((align_flags - IMAGE_SCN_ALIGN_1BYTES) >> 20);
 
                 /* Update section header as needed */
                 if (align_flags > sect_align_flags) {
-                    sects[i]->flags = (sects[i]->flags & ~IMAGE_SCN_ALIGN_MASK) | align_flags;
+                    coff_sects[i]->flags = (coff_sects[i]->flags & ~IMAGE_SCN_ALIGN_MASK) | align_flags;
                 }
                 /* Check if not already aligned */
-                if (sects[i]->len % align) {
-                    unsigned int padding = (align - sects[i]->len) % align;
+                if (coff_sects[i]->len % align) {
+                    unsigned int padding = (align - coff_sects[i]->len) % align;
                     /* We need to write at most 8095 bytes */
                     char buffer[8095];
-                    if (sects[i]->flags & IMAGE_SCN_CNT_CODE) {
+                    if (coff_sects[i]->flags & IMAGE_SCN_CNT_CODE) {
                         /* Fill with INT 3 instructions */
                         memset(buffer, 0xCC, padding);
                     } else {
                         memset(buffer, 0x00, padding);
                     }
-                    saa_wbytes(sects[i]->data, buffer, padding);
-                    sects[i]->len += padding;
+                    saa_wbytes(coff_sects[i]->data, buffer, padding);
+                    coff_sects[i]->len += padding;
                 }
             }
         }
     }
 
-    return sects[i]->index;
+    return coff_sects[i]->index;
 }
 
 static void coff_deflabel(char *name, int32_t segment, int64_t offset,
                           int is_global, char *special)
 {
     int pos = strslen + 4;
-    struct Symbol *sym;
+    struct coff_Symbol *sym;
 
     if (special)
         nasm_error(ERR_NONFATAL, "COFF format does not support any"
@@ -501,12 +464,12 @@ static void coff_deflabel(char *name, int32_t segment, int64_t offset,
 
     if (strlen(name) > 8) {
         size_t nlen = strlen(name)+1;
-        saa_wbytes(strs, name, nlen);
+        saa_wbytes(coff_strs, name, nlen);
         strslen += nlen;
     } else
         pos = -1;
 
-    sym = saa_wstruct(syms);
+    sym = saa_wstruct(coff_syms);
 
     sym->strpos = pos;
     sym->namlen = strlen(name);
@@ -519,8 +482,8 @@ static void coff_deflabel(char *name, int32_t segment, int64_t offset,
     else {
         int i;
         sym->section = 0;
-        for (i = 0; i < nsects; i++)
-            if (segment == sects[i]->index) {
+        for (i = 0; i < coff_nsects; i++)
+            if (segment == coff_sects[i]->index) {
                 sym->section = i + 1;
                 break;
             }
@@ -537,20 +500,20 @@ static void coff_deflabel(char *name, int32_t segment, int64_t offset,
      * to these symbol records.
      */
     if (sym->section == 0)
-        bsym = raa_write(bsym, segment, nsyms);
+        bsym = raa_write(bsym, segment, coff_nsyms);
 
     if (segment != NO_SEG)
         symval = raa_write(symval, segment, sym->section ? 0 : sym->value);
 
-    nsyms++;
+    coff_nsyms++;
 }
 
-static int32_t coff_add_reloc(struct Section *sect, int32_t segment,
+static int32_t coff_add_reloc(struct coff_Section *sect, int32_t segment,
                               int16_t type)
 {
-    struct Reloc *r;
+    struct coff_Reloc *r;
 
-    r = *sect->tail = nasm_malloc(sizeof(struct Reloc));
+    r = *sect->tail = nasm_malloc(sizeof(struct coff_Reloc));
     sect->tail = &r->next;
     r->next = NULL;
 
@@ -560,8 +523,8 @@ static int32_t coff_add_reloc(struct Section *sect, int32_t segment,
     } else {
         int i;
         r->symbase = REAL_SYMBOLS;
-        for (i = 0; i < nsects; i++) {
-            if (segment == sects[i]->index) {
+        for (i = 0; i < coff_nsects; i++) {
+            if (segment == coff_sects[i]->index) {
                 r->symbol = i * 2;
                 r->symbase = SECT_SYMBOLS;
                 break;
@@ -587,7 +550,7 @@ static void coff_out(int32_t segto, const void *data,
                      enum out_type type, uint64_t size,
                      int32_t segment, int32_t wrt)
 {
-    struct Section *s;
+    struct coff_Section *s;
     uint8_t mydata[8], *p;
     int i;
 
@@ -596,29 +559,19 @@ static void coff_out(int32_t segto, const void *data,
         nasm_error(ERR_NONFATAL, "WRT not supported by COFF output formats");
     }
 
-    /*
-     * handle absolute-assembly (structure definitions)
-     */
-    if (segto == NO_SEG) {
-        if (type != OUT_RESERVE)
-            nasm_error(ERR_NONFATAL, "attempt to assemble code in [ABSOLUTE]"
-                  " space");
-        return;
-    }
-
     s = NULL;
-    for (i = 0; i < nsects; i++) {
-        if (segto == sects[i]->index) {
-            s = sects[i];
+    for (i = 0; i < coff_nsects; i++) {
+        if (segto == coff_sects[i]->index) {
+            s = coff_sects[i];
             break;
         }
     }
     if (!s) {
         int tempint;            /* ignored */
         if (segto != coff_section_names(".text", 2, &tempint))
-            nasm_error(ERR_PANIC, "strange segment conditions in COFF driver");
+            nasm_panic("strange segment conditions in COFF driver");
         else
-            s = sects[nsects - 1];
+            s = coff_sects[coff_nsects - 1];
     }
 
     /* magically default to 'wrt ..imagebase' in .pdata and .xdata */
@@ -636,6 +589,20 @@ static void coff_out(int32_t segto, const void *data,
 
     memset(mydata, 0, sizeof(mydata));
 
+    if (dfmt && dfmt->debug_output) {
+        struct coff_DebugInfo dinfo;
+        dinfo.segto = segto;
+        dinfo.seg = segment;
+        dinfo.section = s;
+
+        if (type == OUT_ADDRESS)
+            dinfo.size = abs((int)size);
+        else
+            dinfo.size = realsize(type, size);
+
+        dfmt->debug_output(type, &dinfo);
+    }
+
     if (type == OUT_RESERVE) {
         if (s->data) {
             nasm_error(ERR_WARNING, "uninitialised space declared in"
@@ -644,11 +611,9 @@ static void coff_out(int32_t segto, const void *data,
         } else
             s->len += size;
     } else if (type == OUT_RAWDATA) {
-        if (segment != NO_SEG)
-            nasm_error(ERR_PANIC, "OUT_RAWDATA with other than NO_SEG");
         coff_sect_write(s, data, size);
     } else if (type == OUT_ADDRESS) {
-        int asize = abs(size);
+        int asize = abs((int)size);
         if (!win64) {
             if (asize != 4 && (segment != NO_SEG || wrt != NO_SEG)) {
                 nasm_error(ERR_NONFATAL, "COFF format does not support non-32-bit"
@@ -693,7 +658,7 @@ static void coff_out(int32_t segto, const void *data,
               " relocations");
     } else if (type == OUT_REL4ADR) {
         if (segment == segto && !(win64))  /* Acceptable for RIP-relative */
-            nasm_error(ERR_PANIC, "intra-segment OUT_REL4ADR");
+            nasm_panic("intra-segment OUT_REL4ADR");
         else if (segment == NO_SEG && win32)
             nasm_error(ERR_NONFATAL, "Win32 COFF does not correctly support"
                   " relative references to absolute addresses");
@@ -717,7 +682,7 @@ static void coff_out(int32_t segto, const void *data,
     }
 }
 
-static void coff_sect_write(struct Section *sect,
+static void coff_sect_write(struct coff_Section *sect,
                             const uint8_t *data, uint32_t len)
 {
     saa_wbytes(sect->data, data, len);
@@ -738,7 +703,7 @@ typedef struct tagString {
  */
 
 static STRING *Exports = NULL;
-static struct Section *directive_sec;
+static struct coff_Section *directive_sec;
 static void AddExport(char *name)
 {
     STRING *rvp = Exports, *newS;
@@ -751,15 +716,15 @@ static void AddExport(char *name)
     if (rvp == NULL) {
         int i;
 
-        for (i = 0; i < nsects; i++) {
-            if (!strcmp(EXPORT_SECTION_NAME, sects[i]->name))
+        for (i = 0; i < coff_nsects; i++) {
+            if (!strcmp(EXPORT_SECTION_NAME, coff_sects[i]->name))
                 break;
         }
 
-        if (i == nsects)
+        if (i == coff_nsects)
             i = coff_make_section(EXPORT_SECTION_NAME, EXPORT_SECTION_FLAGS);
 
-        directive_sec = sects[i];
+        directive_sec = coff_sects[i];
         Exports = newS;
     } else {
         while (rvp->next) {
@@ -789,7 +754,8 @@ static void BuildExportTable(STRING **rvp)
     *rvp = NULL;
 }
 
-static int coff_directives(enum directives directive, char *value, int pass)
+static enum directive_result
+coff_directives(enum directive directive, char *value, int pass)
 {
     switch (directive) {
     case D_EXPORT:
@@ -797,7 +763,7 @@ static int coff_directives(enum directives directive, char *value, int pass)
         char *q, *name;
 
         if (pass == 2)
-            return 1;           /* ignore in pass two */
+            return DIRR_OK;           /* ignore in pass two */
         name = q = value;
         while (*q && !nasm_isspace(*q))
             q++;
@@ -809,14 +775,14 @@ static int coff_directives(enum directives directive, char *value, int pass)
 
         if (!*name) {
             nasm_error(ERR_NONFATAL, "`export' directive requires export name");
-            return 1;
+            return DIRR_ERROR;
         }
         if (*q) {
             nasm_error(ERR_NONFATAL, "unrecognized export qualifier `%s'", q);
-            return 1;
+            return DIRR_ERROR;
         }
         AddExport(name);
-        return 1;
+        return DIRR_OK;
     }
     case D_SAFESEH:
     {
@@ -827,10 +793,10 @@ static int coff_directives(enum directives directive, char *value, int pass)
             return 0;
 
         if (sxseg == -1) {
-            for (i = 0; i < nsects; i++)
-                if (!strcmp(".sxdata",sects[i]->name))
+            for (i = 0; i < coff_nsects; i++)
+                if (!strcmp(".sxdata",coff_sects[i]->name))
                     break;
-            if (i == nsects)
+            if (i == coff_nsects)
                 sxseg = coff_make_section(".sxdata", IMAGE_SCN_LNK_INFO);
             else
                 sxseg = i;
@@ -841,9 +807,9 @@ static int coff_directives(enum directives directive, char *value, int pass)
          */
         if (pass0 == 2) {
             uint32_t n;
-            saa_rewind(syms);
-            for (n = 0; n < nsyms; n++) {
-                struct Symbol *sym = saa_rstruct(syms);
+            saa_rewind(coff_syms);
+            for (n = 0; n < coff_nsyms; n++) {
+                struct coff_Symbol *sym = saa_rstruct(coff_syms);
                 bool equals;
 
                 /*
@@ -852,7 +818,7 @@ static int coff_directives(enum directives directive, char *value, int pass)
                  */
                 if (sym->strpos >=4) {
                     char *name = nasm_malloc(sym->namlen+1);
-                    saa_fread(strs, sym->strpos-4, name, sym->namlen);
+                    saa_fread(coff_strs, sym->strpos-4, name, sym->namlen);
                     name[sym->namlen] = '\0';
                     equals = !strcmp(value,name);
                     nasm_free(name);
@@ -867,26 +833,27 @@ static int coff_directives(enum directives directive, char *value, int pass)
                      * .absolute and two per each section
                      */
                     unsigned char value[4],*p=value;
-                    WRITELONG(p,n + 2 + 1 + nsects*2);
-                    coff_sect_write(sects[sxseg],value,4);
+                    WRITELONG(p,n + 2 + 1 + coff_nsects*2);
+                    coff_sect_write(coff_sects[sxseg],value,4);
                     sym->type = 0x20;
                     break;
                 }
             }
-            if (n == nsyms) {
+            if (n == coff_nsyms) {
                 nasm_error(ERR_NONFATAL,
                            "`safeseh' directive requires valid symbol");
+                return DIRR_ERROR;
             }
         }
-        return 1;
+        return DIRR_OK;
     }
     default:
-        return 0;
+        return DIRR_UNKNOWN;
     }
 }
 
 /* handle relocations storm, valid for win32/64 only */
-static inline void coff_adjust_relocs(struct Section *s)
+static inline void coff_adjust_relocs(struct coff_Section *s)
 {
     if (s->nrelocs < IMAGE_SCN_MAX_RELOC)
         return;
@@ -894,8 +861,7 @@ static inline void coff_adjust_relocs(struct Section *s)
     else
     {
         if (ofmt == &of_coff)
-            nasm_error(ERR_FATAL,
-                       "Too many relocations (%d) for section `%s'",
+            nasm_fatal("Too many relocations (%d) for section `%s'",
                        s->nrelocs, s->name);
     }
 #endif
@@ -916,13 +882,13 @@ static void coff_write(void)
         /* add default value for @feat.00, this allows to 'link /safeseh' */
         uint32_t n;
 
-        saa_rewind(syms);
-        for (n = 0; n < nsyms; n++) {
-            struct Symbol *sym = saa_rstruct(syms);
+        saa_rewind(coff_syms);
+        for (n = 0; n < coff_nsyms; n++) {
+            struct coff_Symbol *sym = saa_rstruct(coff_syms);
             if (sym->strpos == -1 && !strcmp("@feat.00",sym->name))
                 break;
         }
-        if (n == nsyms)
+        if (n == coff_nsyms)
             coff_deflabel("@feat.00", NO_SEG, 1, 0, NULL);
     }
 
@@ -931,17 +897,17 @@ static void coff_write(void)
      * Calculate the start of the `real' symbols at the same time.
      * Check for massive relocations.
      */
-    pos = 0x14 + 0x28 * nsects;
+    pos = 0x14 + 0x28 * coff_nsects;
     initsym = 3;                /* two for the file, one absolute */
-    for (i = 0; i < nsects; i++) {
-        if (sects[i]->data) {
-            coff_adjust_relocs(sects[i]);
-            sects[i]->pos = pos;
-            pos += sects[i]->len;
-            sects[i]->relpos = pos;
-            pos += 10 * sects[i]->nrelocs;
+    for (i = 0; i < coff_nsects; i++) {
+        if (coff_sects[i]->data) {
+            coff_adjust_relocs(coff_sects[i]);
+            coff_sects[i]->pos = pos;
+            pos += coff_sects[i]->len;
+            coff_sects[i]->relpos = pos;
+            pos += 10 * coff_sects[i]->nrelocs;
         } else
-            sects[i]->pos = sects[i]->relpos = 0L;
+            coff_sects[i]->pos = coff_sects[i]->relpos = 0L;
         initsym += 2;           /* two for each section */
     }
     sympos = pos;
@@ -954,10 +920,11 @@ static void coff_write(void)
     else
         i = IMAGE_FILE_MACHINE_I386;
     fwriteint16_t(i,                    ofile); /* machine type */
-    fwriteint16_t(nsects,               ofile); /* number of sections */
-    fwriteint32_t(time(NULL),           ofile); /* time stamp */
+    fwriteint16_t(coff_nsects,               ofile); /* number of sections */
+    // Chromium patch: Builds should be deterministic and not embed timestamps.
+    fwriteint32_t(0,                    ofile); /* time stamp */
     fwriteint32_t(sympos,               ofile);
-    fwriteint32_t(nsyms + initsym,      ofile);
+    fwriteint32_t(coff_nsyms + initsym,      ofile);
     fwriteint16_t(0,                    ofile); /* no optional header */
     /* Flags: 32-bit, no line numbers. Win32 doesn't even bother with them. */
     fwriteint16_t((win32 | win64) ? 0 : 0x104, ofile);
@@ -966,20 +933,20 @@ static void coff_write(void)
      * Output the section headers.
      */
     vsize = 0L;
-    for (i = 0; i < nsects; i++) {
-        coff_section_header(sects[i]->name, sects[i]->namepos, vsize, sects[i]->len,
-                            sects[i]->pos, sects[i]->relpos,
-                            sects[i]->nrelocs, sects[i]->flags);
-        vsize += sects[i]->len;
+    for (i = 0; i < coff_nsects; i++) {
+        coff_section_header(coff_sects[i]->name, coff_sects[i]->namepos, vsize, coff_sects[i]->len,
+                            coff_sects[i]->pos, coff_sects[i]->relpos,
+                            coff_sects[i]->nrelocs, coff_sects[i]->flags);
+        vsize += coff_sects[i]->len;
     }
 
     /*
      * Output the sections and their relocations.
      */
-    for (i = 0; i < nsects; i++)
-        if (sects[i]->data) {
-            saa_fpwrite(sects[i]->data, ofile);
-            coff_write_relocs(sects[i]);
+    for (i = 0; i < coff_nsects; i++)
+        if (coff_sects[i]->data) {
+            saa_fpwrite(coff_sects[i]->data, ofile);
+            coff_write_relocs(coff_sects[i]);
         }
 
     /*
@@ -987,7 +954,7 @@ static void coff_write(void)
      */
     coff_write_symbols();
     fwriteint32_t(strslen + 4, ofile);     /* length includes length count */
-    saa_fpwrite(strs, ofile);
+    saa_fpwrite(coff_strs, ofile);
 }
 
 static void coff_section_header(char *name, int32_t namepos, int32_t vsize,
@@ -1047,9 +1014,9 @@ static void coff_section_header(char *name, int32_t namepos, int32_t vsize,
     fwriteint32_t(flags,        ofile);
 }
 
-static void coff_write_relocs(struct Section *s)
+static void coff_write_relocs(struct coff_Section *s)
 {
-    struct Reloc *r;
+    struct coff_Reloc *r;
 
     /* a real number of relocations if needed */
     if (s->flags & IMAGE_SCN_LNK_NRELOC_OVFL) {
@@ -1098,7 +1065,7 @@ static void coff_write_symbols(void)
      * The `.file' record, and the file name auxiliary record.
      */
     coff_symbol(".file", 0L, 0L, -2, 0, 0x67, 1);
-    strncpy(filename, coff_infile, 18);
+    strncpy(filename, inname, 18);
     nasm_write(filename, 18, ofile);
 
     /*
@@ -1106,10 +1073,10 @@ static void coff_write_symbols(void)
      */
     memset(filename, 0, 18);    /* useful zeroed buffer */
 
-    for (i = 0; i < (uint32_t) nsects; i++) {
-        coff_symbol(sects[i]->name, 0L, 0L, i + 1, 0, 3, 1);
-        fwriteint32_t(sects[i]->len,    ofile);
-        fwriteint16_t(sects[i]->nrelocs,ofile);
+    for (i = 0; i < (uint32_t) coff_nsects; i++) {
+        coff_symbol(coff_sects[i]->name, 0L, 0L, i + 1, 0, 3, 1);
+        fwriteint32_t(coff_sects[i]->len,    ofile);
+        fwriteint16_t(coff_sects[i]->nrelocs,ofile);
         nasm_write(filename, 12, ofile);
     }
 
@@ -1121,9 +1088,9 @@ static void coff_write_symbols(void)
     /*
      * The real symbols.
      */
-    saa_rewind(syms);
-    for (i = 0; i < nsyms; i++) {
-        struct Symbol *sym = saa_rstruct(syms);
+    saa_rewind(coff_syms);
+    for (i = 0; i < coff_nsyms; i++) {
+        struct coff_Symbol *sym = saa_rstruct(coff_syms);
         coff_symbol(sym->strpos == -1 ? sym->name : NULL,
                     sym->strpos, sym->value, sym->section,
                     sym->type, sym->is_global ? 2 : 3, 0);
@@ -1132,13 +1099,13 @@ static void coff_write_symbols(void)
 
 static void coff_sectalign(int32_t seg, unsigned int value)
 {
-    struct Section *s = NULL;
+    struct coff_Section *s = NULL;
     uint32_t align;
     int i;
 
-    for (i = 0; i < nsects; i++) {
-        if (sects[i]->index == seg) {
-            s = sects[i];
+    for (i = 0; i < coff_nsects; i++) {
+        if (coff_sects[i]->index == seg) {
+            s = coff_sects[i];
             break;
         }
     }
@@ -1156,98 +1123,93 @@ static void coff_sectalign(int32_t seg, unsigned int value)
         s->flags = (s->flags & ~IMAGE_SCN_ALIGN_MASK) | value;
 }
 
-static int32_t coff_segbase(int32_t segment)
-{
-    return segment;
-}
-
-static void coff_std_filename(char *inname, char *outname)
-{
-    strcpy(coff_infile, inname);
-    standard_extension(inname, outname, ".o");
-}
-
-static void coff_win32_filename(char *inname, char *outname)
-{
-    strcpy(coff_infile, inname);
-    standard_extension(inname, outname, ".obj");
-}
-
 extern macros_t coff_stdmac[];
 
-static int coff_set_info(enum geninfo type, char **val)
-{
-    (void)type;
-    (void)val;
-    return 0;
-}
 #endif /* defined(OF_COFF) || defined(OF_WIN32) */
 
 #ifdef OF_COFF
 
-struct ofmt of_coff = {
+const struct ofmt of_coff = {
     "COFF (i386) object files (e.g. DJGPP for DOS)",
     "coff",
+    ".o",
     0,
+    32,
     null_debug_arr,
     &null_debug_form,
     coff_stdmac,
     coff_std_init,
-    coff_set_info,
+    null_reset,
+    nasm_do_legacy_output,
     coff_out,
     coff_deflabel,
     coff_section_names,
+    NULL,
     coff_sectalign,
-    coff_segbase,
+    null_segbase,
     coff_directives,
-    coff_std_filename,
-    coff_cleanup
+    coff_cleanup,
+    NULL                        /* pragma list */
 };
 
 #endif
 
+extern const struct dfmt df_cv8;
+
 #ifdef OF_WIN32
 
-struct ofmt of_win32 = {
+static const struct dfmt * const win32_debug_arr[2] = { &df_cv8, NULL };
+
+const struct ofmt of_win32 = {
     "Microsoft Win32 (i386) object files",
     "win32",
+    ".obj",
     0,
-    null_debug_arr,
-    &null_debug_form,
+    32,
+    win32_debug_arr,
+    &df_cv8,
     coff_stdmac,
     coff_win32_init,
-    coff_set_info,
+    null_reset,
+    nasm_do_legacy_output,
     coff_out,
     coff_deflabel,
     coff_section_names,
+    NULL,
     coff_sectalign,
-    coff_segbase,
+    null_segbase,
     coff_directives,
-    coff_win32_filename,
-    coff_cleanup
+    coff_cleanup,
+    NULL                        /* pragma list */
 };
 
 #endif
 
 #ifdef OF_WIN64
 
-struct ofmt of_win64 = {
+static const struct dfmt * const win64_debug_arr[2] = { &df_cv8, NULL };
+
+const struct ofmt of_win64 = {
     "Microsoft Win64 (x86-64) object files",
     "win64",
+    ".obj",
     0,
-    null_debug_arr,
-    &null_debug_form,
+    64,
+    win64_debug_arr,
+    &df_cv8,
     coff_stdmac,
     coff_win64_init,
-    coff_set_info,
+    null_reset,
+    nasm_do_legacy_output,
     coff_out,
     coff_deflabel,
     coff_section_names,
+    NULL,
     coff_sectalign,
-    coff_segbase,
+    null_segbase,
     coff_directives,
-    coff_win32_filename,
-    coff_cleanup
+    coff_cleanup,
+    NULL                        /* pragma list */
 };
 
 #endif

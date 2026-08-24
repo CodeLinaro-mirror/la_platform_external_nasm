@@ -42,16 +42,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <inttypes.h>
 
 #include "nasm.h"
 #include "nasmlib.h"
+#include "error.h"
 #include "saa.h"
 #include "raa.h"
 #include "stdscan.h"
 #include "eval.h"
-#include "output/outform.h"
-#include "output/outlib.h"
+#include "outform.h"
+#include "outlib.h"
 
 #if defined OF_AOUT || defined OF_AOUTB
 
@@ -188,7 +188,7 @@ static void aout_init(void)
 
 #ifdef OF_AOUTB
 
-extern struct ofmt of_aoutb;
+extern const struct ofmt of_aoutb;
 
 static void aoutb_init(void)
 {
@@ -198,24 +198,22 @@ static void aoutb_init(void)
     is_pic = 0x00;              /* may become 0x40 */
 
     aout_gotpc_sect = seg_alloc();
-    define_label("..gotpc", aout_gotpc_sect + 1, 0L, NULL, false, false);
+    backend_label("..gotpc", aout_gotpc_sect + 1, 0L);
     aout_gotoff_sect = seg_alloc();
-    define_label("..gotoff", aout_gotoff_sect + 1, 0L, NULL, false, false);
+    backend_label("..gotoff", aout_gotoff_sect + 1, 0L);
     aout_got_sect = seg_alloc();
-    define_label("..got", aout_got_sect + 1, 0L, NULL, false, false);
+    backend_label("..got", aout_got_sect + 1, 0L);
     aout_plt_sect = seg_alloc();
-    define_label("..plt", aout_plt_sect + 1, 0L, NULL, false, false);
+    backend_label("..plt", aout_plt_sect + 1, 0L);
     aout_sym_sect = seg_alloc();
-    define_label("..sym", aout_sym_sect + 1, 0L, NULL, false, false);
+    backend_label("..sym", aout_sym_sect + 1, 0L);
 }
 
 #endif
 
-static void aout_cleanup(int debuginfo)
+static void aout_cleanup(void)
 {
     struct Reloc *r;
-
-    (void)debuginfo;
 
     aout_pad_sections();
     aout_fixup_relocs(&stext);
@@ -246,11 +244,10 @@ static int32_t aout_section_names(char *name, int pass, int *bits)
     /*
      * Default to 32 bits.
      */
-    if (!name)
+    if (!name) {
         *bits = 32;
-
-    if (!name)
         return stext.index;
+    }
 
     if (!strcmp(name, ".text"))
         return stext.index;
@@ -294,14 +291,11 @@ static void aout_deflabel(char *name, int32_t segment, int64_t offset,
                 expr *e;
                 char *p = special;
 
-                while (*p && !nasm_isspace(*p))
-                    p++;
-                while (*p && nasm_isspace(*p))
-                    p++;
+                p = nasm_skip_spaces(nasm_skip_word(p));
                 stdscan_reset();
                 stdscan_set(p);
                 tokval.t_type = TOKEN_INVALID;
-                e = evaluate(stdscan, NULL, &tokval, NULL, 1, nasm_error, NULL);
+                e = evaluate(stdscan, NULL, &tokval, NULL, 1, NULL);
                 if (e) {
                     if (!is_simple(e))
                         nasm_error(ERR_NONFATAL, "cannot use relocatable"
@@ -395,8 +389,7 @@ static void aout_deflabel(char *name, int32_t segment, int64_t offset,
                     stdscan_reset();
                     stdscan_set(special + n);
                     tokval.t_type = TOKEN_INVALID;
-                    e = evaluate(stdscan, NULL, &tokval, &fwd, 0, nasm_error,
-                                 NULL);
+                    e = evaluate(stdscan, NULL, &tokval, &fwd, 0, NULL);
                     if (fwd) {
                         sym->nextfwd = fwds;
                         fwds = sym;
@@ -593,16 +586,6 @@ static void aout_out(int32_t segto, const void *data,
     int32_t addr;
     uint8_t mydata[4], *p;
 
-    /*
-     * handle absolute-assembly (structure definitions)
-     */
-    if (segto == NO_SEG) {
-        if (type != OUT_RESERVE)
-            nasm_error(ERR_NONFATAL, "attempt to assemble code in [ABSOLUTE]"
-                  " space");
-        return;
-    }
-
     if (segto == stext.index)
         s = &stext;
     else if (segto == sdata.index)
@@ -633,11 +616,9 @@ static void aout_out(int32_t segto, const void *data,
         } else
             sbss.len += size;
     } else if (type == OUT_RAWDATA) {
-        if (segment != NO_SEG)
-            nasm_error(ERR_PANIC, "OUT_RAWDATA with other than NO_SEG");
         aout_sect_write(s, data, size);
     } else if (type == OUT_ADDRESS) {
-        int asize = abs(size);
+        int asize = abs((int)size);
         addr = *(int64_t *)data;
         if (segment != NO_SEG) {
             if (segment % 2) {
@@ -685,8 +666,6 @@ static void aout_out(int32_t segto, const void *data,
             WRITELONG(p, addr);
         aout_sect_write(s, mydata, asize);
     } else if (type == OUT_REL2ADR) {
-        if (segment == segto)
-            nasm_error(ERR_PANIC, "intra-segment OUT_REL2ADR");
         if (segment != NO_SEG && segment % 2) {
             nasm_error(ERR_NONFATAL, "a.out format does not support"
                   " segment base references");
@@ -715,8 +694,6 @@ static void aout_out(int32_t segto, const void *data,
         WRITESHORT(p, *(int64_t *)data - (size + s->len));
         aout_sect_write(s, mydata, 2L);
     } else if (type == OUT_REL4ADR) {
-        if (segment == segto)
-            nasm_error(ERR_PANIC, "intra-segment OUT_REL4ADR");
         if (segment != NO_SEG && segment % 2) {
             nasm_error(ERR_NONFATAL, "a.out format does not support"
                   " segment base references");
@@ -896,62 +873,60 @@ static void aout_sect_write(struct Section *sect,
     sect->len += len;
 }
 
-static int32_t aout_segbase(int32_t segment)
-{
-    return segment;
-}
-
-static void aout_filename(char *inname, char *outname)
-{
-    standard_extension(inname, outname, ".o");
-}
-
 extern macros_t aout_stdmac[];
 
 #endif                          /* OF_AOUT || OF_AOUTB */
 
 #ifdef OF_AOUT
 
-struct ofmt of_aout = {
+const struct ofmt of_aout = {
     "Linux a.out object files",
     "aout",
+    ".o",
     0,
+    32,
     null_debug_arr,
     &null_debug_form,
     aout_stdmac,
     aout_init,
-    null_setinfo,
+    null_reset,
+    nasm_do_legacy_output,
     aout_out,
     aout_deflabel,
     aout_section_names,
+    NULL,
     null_sectalign,
-    aout_segbase,
+    null_segbase,
     null_directive,
-    aout_filename,
-    aout_cleanup
+    aout_cleanup,
+    NULL                        /* pragma list */
 };
 
 #endif
 
 #ifdef OF_AOUTB
 
-struct ofmt of_aoutb = {
+const struct ofmt of_aoutb = {
     "NetBSD/FreeBSD a.out object files",
     "aoutb",
+    ".o",
     0,
+    32,
     null_debug_arr,
     &null_debug_form,
     aout_stdmac,
     aoutb_init,
-    null_setinfo,
+    null_reset,
+    nasm_do_legacy_output,
     aout_out,
     aout_deflabel,
     aout_section_names,
+    NULL,
     null_sectalign,
-    aout_segbase,
+    null_segbase,
     null_directive,
-    aout_filename,
-    aout_cleanup
+    aout_cleanup,
+    NULL                        /* pragma list */
 };
 
 #endif

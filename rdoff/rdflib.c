@@ -1,5 +1,5 @@
 /* ----------------------------------------------------------------------- *
- *   
+ *
  *   Copyright 1996-2009 The NASM Authors - All Rights Reserved
  *   See the file AUTHORS included with the NASM distribution for
  *   the specific copyright holders.
@@ -14,7 +14,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *     
+ *
  *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
  *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -57,14 +57,13 @@
  */
 
 #include "compiler.h"
+#include "rdfutils.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
-#include <inttypes.h>
 #include <time.h>
-#include <inttypes.h>
 
 /* functions supported:
  *   create a library	(no extra operands required)
@@ -170,6 +169,8 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    rdoff_init();
+
     switch (argv[1][0]) {
     case 'c':                  /* create library */
         fp = fopen(argv[2], "wb");
@@ -178,11 +179,10 @@ int main(int argc, char **argv)
             perror("rdflib");
             exit(1);
         }
-        fwrite(sig_modname, 1, strlen(sig_modname) + 1, fp);
-        fwrite(rdl_signature, 1, strlen(rdl_signature), fp);
-        l = sizeof(t = time(NULL));
-        fwrite(&l, sizeof(l), 1, fp);
-        fwrite(&t, 1, l, fp);
+        nasm_write(sig_modname, strlen(sig_modname) + 1, fp);
+        nasm_write(rdl_signature, strlen(rdl_signature), fp);
+	t = time(NULL);
+        fwriteint32_t(t, fp);
         fclose(fp);
         break;
 
@@ -233,6 +233,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "rdflib: required parameter missing\n");
             exit(1);
         }
+        break;
     case 't':
         fp = fopen(argv[2], "rb");
         if (!fp) {
@@ -317,6 +318,8 @@ int main(int argc, char **argv)
 
     case 'r':                  /* replace module */
         argc--;
+        /* fall through */
+
     case 'd':                  /* delete module */
         if (argc < 4) {
             fprintf(stderr, "rdflib: required parameter missing\n");
@@ -352,7 +355,11 @@ int main(int argc, char **argv)
         fseek(fp, 0, SEEK_SET);
         copybytes(fp, fptmp, l);
         rewind(fptmp);
-        freopen(argv[2], "wb", fp);
+        if (freopen(argv[2], "wb", fp) == NULL) {
+            fprintf(stderr, "rdflib: could not reopen '%s'\n", argv[2]);
+            perror("rdflib");
+            exit(1);
+        }
 
         while (!feof(fptmp)) {
             /* read name */
@@ -366,12 +373,14 @@ int main(int argc, char **argv)
 
             /* check against desired name */
             if (!strcmp(buf, argv[3])) {
-                fread(p = rdbuf, 1, sizeof(rdbuf), fptmp);
+                if (fread(p = rdbuf, 1, sizeof(rdbuf), fptmp) < 10) {
+                    nasm_fatal("short read on input");
+                }
                 l = *(int32_t *)(p + 6);
                 fseek(fptmp, l, SEEK_CUR);
                 break;
             } else {
-                fwrite(buf, 1, strlen(buf) + 1, fp);    /* module name */
+                nasm_write(buf, strlen(buf) + 1, fp);    /* module name */
                 if ((c = copybytes(fptmp, fp, 6)) >= '2') {
                     l = copyint32_t(fptmp, fp);    /* version 2 or above */
                     copybytes(fptmp, fp, l);    /* entire object */

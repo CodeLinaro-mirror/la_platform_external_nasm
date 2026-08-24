@@ -1,6 +1,6 @@
 /* ----------------------------------------------------------------------- *
  *   
- *   Copyright 1996-2013 The NASM Authors - All Rights Reserved
+ *   Copyright 1996-2017 The NASM Authors - All Rights Reserved
  *   See the file AUTHORS included with the NASM distribution for
  *   the specific copyright holders.
  *
@@ -79,16 +79,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <inttypes.h>
 
 #include "nasm.h"
 #include "nasmlib.h"
+#include "error.h"
 #include "saa.h"
 #include "stdscan.h"
 #include "labels.h"
 #include "eval.h"
-#include "output/outform.h"
-#include "output/outlib.h"
+#include "outform.h"
+#include "outlib.h"
 
 #ifdef OF_BIN
 
@@ -161,7 +161,6 @@ static int origin_defined;
 #define MAP_SECTIONS     4
 #define MAP_SYMBOLS      8
 static int map_control = 0;
-static char *infile, *outfile;
 
 extern macros_t bin_stdmac[];
 
@@ -220,7 +219,7 @@ static struct Section *create_section(char *name)
     return last_section;
 }
 
-static void bin_cleanup(int debuginfo)
+static void bin_cleanup(void)
 {
     struct Section *g, **gp;
     struct Section *gs = NULL, **gsp;
@@ -231,8 +230,6 @@ static void bin_cleanup(int debuginfo)
     struct Reloc *r;
     uint64_t pend;
     int h;
-
-    (void)debuginfo;      /* placate optimizers */
 
 #ifdef DEBUG
     nasm_error(ERR_DEBUG,
@@ -270,9 +267,8 @@ static void bin_cleanup(int debuginfo)
         if (s->flags & (START_DEFINED | ALIGN_DEFINED | FOLLOWS_DEFINED)) {     /* Check for a mixture of real and virtual section attributes. */
             if (s->flags & (VSTART_DEFINED | VALIGN_DEFINED |
 			    VFOLLOWS_DEFINED))
-                nasm_error(ERR_FATAL|ERR_NOFILE,
-                      "cannot mix real and virtual attributes"
-                      " in nobits section (%s)", s->name);
+                nasm_fatal("cannot mix real and virtual attributes"
+                           " in nobits section (%s)", s->name);
             /* Real and virtual attributes mean the same thing for nobits sections. */
             if (s->flags & START_DEFINED) {
                 s->vstart = s->start;
@@ -341,11 +337,11 @@ static void bin_cleanup(int debuginfo)
              s && strcmp(s->name, g->follows);
              sp = &s->next, s = s->next) ;
         if (!s)
-            nasm_error(ERR_FATAL|ERR_NOFILE, "section %s follows an invalid or"
+            nasm_fatal("section %s follows an invalid or"
                   " unknown section (%s)", g->name, g->follows);
         if (s->next && (s->next->flags & FOLLOWS_DEFINED) &&
             !strcmp(s->name, s->next->follows))
-            nasm_error(ERR_FATAL|ERR_NOFILE, "sections %s and %s can't both follow"
+            nasm_fatal("sections %s and %s can't both follow"
                   " section %s", g->name, s->next->name, s->name);
         /* Find the end of the current follows group (gs). */
         for (gsp = &g->next, gs = g->next;
@@ -389,7 +385,7 @@ static void bin_cleanup(int debuginfo)
 	if (sections->flags & START_DEFINED) {
             /* Make sure this section doesn't begin before the origin. */
             if (sections->start < origin)
-                nasm_error(ERR_FATAL|ERR_NOFILE, "section %s begins"
+                nasm_fatal("section %s begins"
                       " before program origin", sections->name);
 	} else if (sections->flags & ALIGN_DEFINED) {
             sections->start = ALIGN(origin, sections->align);
@@ -445,13 +441,13 @@ static void bin_cleanup(int debuginfo)
         /* Check for section overlap. */
         if (s) {
 	    if (s->start < origin)
-		nasm_error(ERR_FATAL|ERR_NOFILE, "section %s beings before program origin",
+		nasm_fatal("section %s beings before program origin",
 		      s->name);
 	    if (g->start > s->start)
-                nasm_error(ERR_FATAL|ERR_NOFILE, "sections %s ~ %s and %s overlap!",
+                nasm_fatal("sections %s ~ %s and %s overlap!",
                       gs->name, g->name, s->name);
             if (pend > s->start)
-                nasm_error(ERR_FATAL|ERR_NOFILE, "sections %s and %s overlap!",
+                nasm_fatal("sections %s and %s overlap!",
                       g->name, s->name);
         }
         /* Remember this section as the latest >0 length section. */
@@ -480,9 +476,8 @@ static void bin_cleanup(int debuginfo)
                 for (s = sections; s && strcmp(g->vfollows, s->name);
                      s = s->next) ;
                 if (!s)
-                    nasm_error(ERR_FATAL|ERR_NOFILE,
-                          "section %s vfollows unknown section (%s)",
-                          g->name, g->vfollows);
+                    nasm_fatal("section %s vfollows unknown section (%s)",
+                               g->name, g->vfollows);
             } else if (g->prev != NULL)
                 for (s = sections; s && (s != g->prev); s = s->next) ;
             /* The .bss section is the only one with prev = NULL.
@@ -519,7 +514,7 @@ static void bin_cleanup(int debuginfo)
         }
     }
     if (h)
-        nasm_error(ERR_FATAL|ERR_NOFILE, "circular vfollows path detected");
+        nasm_fatal("circular vfollows path detected");
 
 #ifdef DEBUG
     nasm_error(ERR_DEBUG,
@@ -582,7 +577,7 @@ static void bin_cleanup(int debuginfo)
         for (h = 63; h; h--)
             fputc('-', rf);
         fprintf(rf, "\n\nSource file:  %s\nOutput file:  %s\n\n",
-                infile, outfile);
+                inname, outname);
 
         if (map_control & MAP_ORIGIN) { /* Display program origin. */
             fprintf(rf, "-- Program origin ");
@@ -652,6 +647,7 @@ static void bin_cleanup(int debuginfo)
         if (map_control & MAP_SYMBOLS) {
             int32_t segment;
             int64_t offset;
+            bool found_label;
 
             fprintf(rf, "-- Symbols ");
             for (h = 68; h; h--)
@@ -663,7 +659,8 @@ static void bin_cleanup(int debuginfo)
                     fputc('-', rf);
                 fprintf(rf, "\n\nValue     Name\n");
                 list_for_each(l, no_seg_labels) {
-                    lookup_label(l->name, &segment, &offset);
+                    found_label = lookup_label(l->name, &segment, &offset);
+                    nasm_assert(found_label);
                     fprintf(rf, "%08"PRIX64"  %s\n", offset, l->name);
                 }
                 fprintf(rf, "\n\n");
@@ -675,7 +672,8 @@ static void bin_cleanup(int debuginfo)
                         fputc('-', rf);
                     fprintf(rf, "\n\nReal              Virtual           Name\n");
                     list_for_each(l, s->labels) {
-                        lookup_label(l->name, &segment, &offset);
+                        found_label = lookup_label(l->name, &segment, &offset);
+                        nasm_assert(found_label);
                         fprintf(rf, "%16"PRIX64"  %16"PRIX64"  %s\n",
                                 s->start + offset, s->vstart + offset,
                                 l->name);
@@ -737,18 +735,10 @@ static void bin_out(int32_t segto, const void *data,
         nasm_error(ERR_NONFATAL, "WRT not supported by binary output format");
     }
 
-    /* Handle absolute-assembly (structure definitions). */
-    if (segto == NO_SEG) {
-        if (type != OUT_RESERVE)
-            nasm_error(ERR_NONFATAL, "attempt to assemble code in"
-                  " [ABSOLUTE] space");
-        return;
-    }
-
     /* Find the segment we are targeting. */
     s = find_section_by_index(segto);
     if (!s)
-        nasm_error(ERR_PANIC, "code directed to nonexistent segment?");
+        nasm_panic("code directed to nonexistent segment?");
 
     /* "Smart" section-type adaptation code. */
     if (!(s->flags & TYPE_DEFINED)) {
@@ -765,7 +755,7 @@ static void bin_out(int32_t segto, const void *data,
     switch (type) {
     case OUT_ADDRESS:
     {
-        int asize = abs(size);
+        int asize = abs((int)size);
 
         if (segment != NO_SEG && !find_section_by_index(segment)) {
             if (segment % 2)
@@ -990,7 +980,7 @@ static int bin_read_attribute(char **line, int *attribute,
     stdscan_reset();
     stdscan_set(exp);
     tokval.t_type = TOKEN_INVALID;
-    e = evaluate(stdscan, NULL, &tokval, NULL, 1, nasm_error, NULL);
+    e = evaluate(stdscan, NULL, &tokval, NULL, 1, NULL);
     if (e) {
         if (!is_really_simple(e)) {
             nasm_error(ERR_NONFATAL, "section attribute value must be"
@@ -1217,11 +1207,11 @@ static void bin_define_section_labels(void)
 
         /* section.<name>.start */
         strcpy(label_name + base_len, ".start");
-        define_label(label_name, sec->start_index, 0L, NULL, 0, 0);
+        define_label(label_name, sec->start_index, 0L, false);
 
         /* section.<name>.vstart */
         strcpy(label_name + base_len, ".vstart");
-        define_label(label_name, sec->vstart_index, 0L, NULL, 0, 0);
+        define_label(label_name, sec->vstart_index, 0L, false);
 
         nasm_free(label_name);
     }
@@ -1287,7 +1277,8 @@ static int32_t bin_secname(char *name, int pass, int *bits)
     return sec->vstart_index;
 }
 
-static int bin_directive(enum directives directive, char *args, int pass)
+static enum directive_result
+bin_directive(enum directive directive, char *args, int pass)
 {
     switch (directive) {
     case D_ORG:
@@ -1299,7 +1290,7 @@ static int bin_directive(enum directives directive, char *args, int pass)
         stdscan_reset();
         stdscan_set(args);
         tokval.t_type = TOKEN_INVALID;
-        e = evaluate(stdscan, NULL, &tokval, NULL, 1, nasm_error, NULL);
+        e = evaluate(stdscan, NULL, &tokval, NULL, 1, NULL);
         if (e) {
             if (!is_really_simple(e))
                 nasm_error(ERR_NONFATAL, "org value must be a critical"
@@ -1317,7 +1308,7 @@ static int bin_directive(enum directives directive, char *args, int pass)
         } else
             nasm_error(ERR_NONFATAL, "No or invalid offset specified"
                   " in ORG directive.");
-        return 1;
+        return DIRR_OK;
     }
     case D_MAP:
     {
@@ -1326,7 +1317,7 @@ static int bin_directive(enum directives directive, char *args, int pass)
 	char *p;
 	
         if (pass != 1)
-            return 1;
+            return DIRR_OK;
         args += strspn(args, " \t");
         while (*args) {
             p = args;
@@ -1350,12 +1341,12 @@ static int bin_directive(enum directives directive, char *args, int pass)
                 else if (!nasm_stricmp(p, "stderr"))
                     rf = stderr;
                 else {          /* Must be a filename. */
-                    rf = fopen(p, "wt");
+                    rf = nasm_open_write(p, NF_TEXT);
                     if (!rf) {
                         nasm_error(ERR_WARNING, "unable to open map file `%s'",
                               p);
                         map_control = 0;
-                        return 1;
+                        return DIRR_OK;
                     }
                 }
             } else
@@ -1365,47 +1356,14 @@ static int bin_directive(enum directives directive, char *args, int pass)
             map_control |= MAP_ORIGIN | MAP_SUMMARY;
         if (!rf)
             rf = stdout;
-        return 1;
+        return DIRR_OK;
     }
     default:
-	return 0;
+	return DIRR_UNKNOWN;
     }
 }
 
-static void bin_filename(char *inname, char *outname)
-{
-    standard_extension(inname, outname, "");
-    infile = inname;
-    outfile = outname;
-}
-
-static void ith_filename(char *inname, char *outname)
-{
-    standard_extension(inname, outname, ".ith");
-    infile = inname;
-    outfile = outname;
-}
-
-static void srec_filename(char *inname, char *outname)
-{
-    standard_extension(inname, outname, ".srec");
-    infile = inname;
-    outfile = outname;
-}
-
-static int32_t bin_segbase(int32_t segment)
-{
-    return segment;
-}
-
-static int bin_set_info(enum geninfo type, char **val)
-{
-    (void)type;
-    (void)val;
-    return 0;
-}
-
-struct ofmt of_bin, of_ith, of_srec;
+const struct ofmt of_bin, of_ith, of_srec;
 static void binfmt_init(void);
 static void do_output_bin(void);
 static void do_output_ith(void);
@@ -1431,7 +1389,6 @@ static void srec_init(void)
 
 static void binfmt_init(void)
 {
-    maxbits = 64;               /* Support 64-bit Segments */
     relocs = NULL;
     reloctail = &relocs;
     origin_defined = 0;
@@ -1656,61 +1613,73 @@ static void do_output_srec(void)
 }
 
 
-struct ofmt of_bin = {
+const struct ofmt of_bin = {
     "flat-form binary files (e.g. DOS .COM, .SYS)",
     "bin",
+    "",
     0,
+    64,
     null_debug_arr,
     &null_debug_form,
     bin_stdmac,
     bin_init,
-    bin_set_info,
+    null_reset,
+    nasm_do_legacy_output,
     bin_out,
     bin_deflabel,
     bin_secname,
+    NULL,
     bin_sectalign,
-    bin_segbase,
+    null_segbase,
     bin_directive,
-    bin_filename,
-    bin_cleanup
+    bin_cleanup,
+    NULL                        /* pragma list */
 };
 
-struct ofmt of_ith = {
+const struct ofmt of_ith = {
     "Intel hex",
     "ith",
+    ".ith",                     /* really should have been ".hex"... */
     OFMT_TEXT,
+    64,
     null_debug_arr,
     &null_debug_form,
     bin_stdmac,
     ith_init,
-    bin_set_info,
+    null_reset,
+    nasm_do_legacy_output,
     bin_out,
     bin_deflabel,
     bin_secname,
+    NULL,
     bin_sectalign,
-    bin_segbase,
+    null_segbase,
     bin_directive,
-    ith_filename,
-    bin_cleanup
+    bin_cleanup,
+    NULL                        /* pragma list */
 };
 
-struct ofmt of_srec = {
+const struct ofmt of_srec = {
     "Motorola S-records",
     "srec",
-    0,
+    ".srec",
+    OFMT_TEXT,
+    64,
     null_debug_arr,
     &null_debug_form,
     bin_stdmac,
     srec_init,
-    bin_set_info,
+    null_reset,
+    nasm_do_legacy_output,
     bin_out,
     bin_deflabel,
     bin_secname,
+    NULL,
     bin_sectalign,
-    bin_segbase,
+    null_segbase,
     bin_directive,
-    srec_filename,
-    bin_cleanup
+    bin_cleanup,
+    NULL                        /* pragma list */
 };
 
 #endif                          /* #ifdef OF_BIN */
