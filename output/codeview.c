@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2017 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2020 The NASM Authors - All Rights Reserved */
 
 /*
  * codeview.c Codeview Debug Format support for COFF
@@ -38,9 +8,6 @@
 #include "version.h"
 #include "compiler.h"
 
-#include <stdio.h>
-#include <stddef.h>
-#include <stdlib.h>
 
 #include "nasm.h"
 #include "nasmlib.h"
@@ -62,11 +29,14 @@ static void cv8_output(int type, void *param);
 static void cv8_cleanup(void);
 
 const struct dfmt df_cv8 = {
-    "Codeview 8",               /* .fullname */
+    "Codeview 8+",              /* .fullname */
     "cv8",                      /* .shortname */
     cv8_init,                   /* .init */
     cv8_linenum,                /* .linenum */
     cv8_deflabel,               /* .debug_deflabel */
+    NULL,                       /* .debug_smacros */
+    NULL,                       /* .debug_include */
+    NULL,                       /* .debug_mmacros */
     null_debug_directive,       /* .debug_directive */
     cv8_typevalue,              /* .debug_typevalue */
     cv8_output,                 /* .debug_output */
@@ -177,7 +147,6 @@ static void cv8_init(void)
 
     cv8_state.source_files = NULL;
     cv8_state.source_files_tail = &cv8_state.source_files;
-    hash_init(&cv8_state.file_hash, HASH_MEDIUM);
 
     cv8_state.num_files = 0;
     cv8_state.total_filename_len = 0;
@@ -309,7 +278,7 @@ static void build_type_table(struct coff_Section *const sect);
 static void cv8_cleanup(void)
 {
     struct cv8_symbol *sym;
-    struct source_file *file;
+    struct source_file *file, *ftmp;
 
     struct coff_Section *symbol_sect = coff_sects[cv8_state.symbol_sect];
     struct coff_Section *type_sect = coff_sects[cv8_state.type_sect];
@@ -320,10 +289,10 @@ static void cv8_cleanup(void)
     build_symbol_table(symbol_sect);
     build_type_table(type_sect);
 
-    list_for_each(file, cv8_state.source_files) {
+    list_for_each_safe(file, ftmp, cv8_state.source_files) {
         nasm_free(file->fullname);
         saa_free(file->lines);
-        free(file);
+        nasm_free(file);
     }
     hash_free(&cv8_state.file_hash);
 
@@ -369,9 +338,9 @@ done_0:
     fclose(f);
 done:
     if (!success) {
-        nasm_error(ERR_NONFATAL, "unable to hash file %s. "
-                 "Debug information may be unavailable.\n",
-                 filename);
+        nasm_nonfatal("unable to hash file %s. "
+                      "Debug information may be unavailable.",
+                      filename);
     }
     return;
 }
@@ -402,8 +371,7 @@ static struct source_file *register_file(const char *filename)
 
         fullpath = nasm_realpath(filename);
 
-        file = nasm_zalloc(sizeof(*file));
-
+        nasm_new(file);
         file->filename = filename;
         file->fullname = fullpath;
         file->fullnamelen = strlen(fullpath);
@@ -613,9 +581,9 @@ static void write_linenumber_table(struct coff_Section *const sect)
     }
 }
 
-static uint16_t write_symbolinfo_obj(struct coff_Section *sect)
+static uint32_t write_symbolinfo_obj(struct coff_Section *sect)
 {
-    uint16_t obj_len;
+    uint32_t obj_len;
 
     obj_len = 2 + 4 + cv8_state.outfile.namebytes;
 
@@ -627,11 +595,11 @@ static uint16_t write_symbolinfo_obj(struct coff_Section *sect)
     return obj_len;
 }
 
-static uint16_t write_symbolinfo_properties(struct coff_Section *sect,
+static uint32_t write_symbolinfo_properties(struct coff_Section *sect,
         const char *const creator_str)
 {
     /* https://github.com/Microsoft/microsoft-pdb/blob/1d60e041/include/cvinfo.h#L3313 */
-    uint16_t creator_len;
+    uint32_t creator_len;
 
     creator_len = 2 + 4 + 2 + 3*2 + 3*2 + strlen(creator_str)+1 + 2;
 
@@ -655,7 +623,7 @@ static uint16_t write_symbolinfo_properties(struct coff_Section *sect,
     else if (win32)
         section_write16(sect, 0x0006); /* machine */
     else
-        nasm_assert(!"neither win32 nor win64 are set!");
+        nasm_panic("neither win32 nor win64 are set!");
     section_write16(sect, 0); /* verFEMajor */
     section_write16(sect, 0); /* verFEMinor */
     section_write16(sect, 0); /* verFEBuild */
@@ -675,9 +643,9 @@ static uint16_t write_symbolinfo_properties(struct coff_Section *sect,
     return creator_len;
 }
 
-static uint16_t write_symbolinfo_symbols(struct coff_Section *sect)
+static uint32_t write_symbolinfo_symbols(struct coff_Section *sect)
 {
-    uint16_t len = 0, field_len;
+    uint32_t len = 0, field_len;
     uint32_t field_base;
     struct cv8_symbol *sym;
 
@@ -712,7 +680,7 @@ static uint16_t write_symbolinfo_symbols(struct coff_Section *sect)
             section_write8(sect, 0); /* FLAG */
             break;
         default:
-            nasm_assert(!"unknown symbol type");
+            nasm_panic("unknown symbol type");
         }
 
         section_wbytes(sect, sym->name, strlen(sym->name) + 1);
@@ -731,7 +699,7 @@ static uint16_t write_symbolinfo_symbols(struct coff_Section *sect)
 static void write_symbolinfo_table(struct coff_Section *const sect)
 {
     static const char creator_str[] = "The Netwide Assembler " NASM_VER;
-    uint16_t obj_length, creator_length, sym_length;
+    uint32_t obj_length, creator_length, sym_length;
     uint32_t field_length = 0, out_len;
 
     nasm_assert(cv8_state.outfile.namebytes);
@@ -753,7 +721,7 @@ static void write_symbolinfo_table(struct coff_Section *const sect)
     section_write32(sect, 0x000000F1);
     section_write32(sect, field_length);
 
-    /* for sub fields, length preceeds type */
+    /* for sub fields, length proceeds type */
 
     out_len = write_symbolinfo_obj(sect);
     nasm_assert(out_len == obj_length);
@@ -795,32 +763,28 @@ static void build_symbol_table(struct coff_Section *const sect)
 
 static void build_type_table(struct coff_Section *const sect)
 {
-    uint16_t field_len;
-    struct cv8_symbol *sym;
+    uint32_t field_len;
+    uint32_t typeindex = 0x1000;
+    uint32_t idx_arglist;
 
     section_write32(sect, 0x00000004);
 
-    saa_rewind(cv8_state.symbols);
-    while ((sym = saa_rstruct(cv8_state.symbols))) {
-        if (sym->type != SYMTYPE_PROC)
-            continue;
+    /* empty argument list type */
+    field_len = 2 + 4;
+    section_write16(sect, field_len);
+    section_write16(sect, 0x1201); /* ARGLIST */
+    section_write32(sect, 0); /* num params */
+    idx_arglist = typeindex++;
 
-        /* proc leaf */
+    /* procedure type: void proc(void) */
+    field_len = 2 + 4 + 1 + 1 + 2 + 4;
+    section_write16(sect, field_len);
+    section_write16(sect, 0x1008); /* PROC type */
 
-        field_len = 2 + 4 + 4 + 4 + 2;
-        section_write16(sect, field_len);
-        section_write16(sect, 0x1008); /* PROC type */
-
-        section_write32(sect, 0x00000003); /* return type */
-        section_write32(sect, 0); /* calling convention (default) */
-        section_write32(sect, sym->typeindex);
-        section_write16(sect, 0); /* # params */
-
-        /* arglist */
-
-        field_len = 2 + 4;
-        section_write16(sect, field_len);
-        section_write16(sect, 0x1201); /* ARGLIST */
-        section_write32(sect, 0); /*num params */
-    }
+    section_write32(sect, 0x00000003); /* return type VOID */
+    section_write8(sect, 0);  /* calling convention (default) */
+    section_write8(sect, 0);  /* function attributes */
+    section_write16(sect, 0); /* # params */
+    section_write32(sect, idx_arglist); /* argument list type */
+    /* idx_voidfunc = typeindex++; */
 }

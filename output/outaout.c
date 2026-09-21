@@ -1,47 +1,14 @@
-/* ----------------------------------------------------------------------- *
- *   
- *   Copyright 1996-2013 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *     
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2013 The NASM Authors - All Rights Reserved */
 
-/* 
+/*
  * outaout.c	output routines for the Netwide Assembler to produce
  *		Linux a.out object files
  */
 
 #include "compiler.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
+#include "nctype.h"
 
 #include "nasm.h"
 #include "nasmlib.h"
@@ -236,11 +203,8 @@ static void aout_cleanup(void)
     saa_free(strs);
 }
 
-static int32_t aout_section_names(char *name, int pass, int *bits)
+static int32_t aout_section_names(char *name, int *bits)
 {
-
-    (void)pass;
-
     /*
      * Default to 32 bits.
      */
@@ -275,7 +239,7 @@ static void aout_deflabel(char *name, int32_t segment, int64_t offset,
         if (strcmp(name, "..gotpc") && strcmp(name, "..gotoff") &&
             strcmp(name, "..got") && strcmp(name, "..plt") &&
             strcmp(name, "..sym"))
-            nasm_error(ERR_NONFATAL, "unrecognised special symbol `%s'", name);
+            nasm_nonfatal("unrecognised special symbol `%s'", name);
         return;
     }
 
@@ -292,14 +256,13 @@ static void aout_deflabel(char *name, int32_t segment, int64_t offset,
                 char *p = special;
 
                 p = nasm_skip_spaces(nasm_skip_word(p));
-                stdscan_reset();
-                stdscan_set(p);
+                stdscan_reset(p);
                 tokval.t_type = TOKEN_INVALID;
                 e = evaluate(stdscan, NULL, &tokval, NULL, 1, NULL);
                 if (e) {
                     if (!is_simple(e))
-                        nasm_error(ERR_NONFATAL, "cannot use relocatable"
-                              " expression as symbol size");
+                        nasm_nonfatal("cannot use relocatable"
+                                      " expression as symbol size");
                     else
                         (*s)->size = reloc_value(e);
                 }
@@ -367,17 +330,17 @@ static void aout_deflabel(char *name, int32_t segment, int64_t offset,
                      !nasm_strnicmp(special, "object", n))
                 sym->type |= SYM_DATA;
             else
-                nasm_error(ERR_NONFATAL, "unrecognised symbol type `%.*s'",
-                      n, special);
+                nasm_nonfatal("unrecognised symbol type `%.*s'",
+                              n, special);
             if (special[n]) {
                 struct tokenval tokval;
                 expr *e;
                 int fwd = false;
-                char *saveme = stdscan_get();
+                char *saveme = stdscan_tell();
 
                 if (!bsd) {
-                    nasm_error(ERR_NONFATAL, "Linux a.out does not support"
-                          " symbol size information");
+                    nasm_nonfatal("Linux a.out does not support"
+                                  " symbol size information");
                 } else {
                     while (special[n] && nasm_isspace(special[n]))
                         n++;
@@ -386,8 +349,7 @@ static void aout_deflabel(char *name, int32_t segment, int64_t offset,
                      * evaluate it.
                      */
                     sym->type |= SYM_WITH_SIZE;
-                    stdscan_reset();
-                    stdscan_set(special + n);
+                    stdscan_reset(special + n);
                     tokval.t_type = TOKEN_INVALID;
                     e = evaluate(stdscan, NULL, &tokval, &fwd, 0, NULL);
                     if (fwd) {
@@ -396,13 +358,13 @@ static void aout_deflabel(char *name, int32_t segment, int64_t offset,
                         sym->name = nasm_strdup(name);
                     } else if (e) {
                         if (!is_simple(e))
-                            nasm_error(ERR_NONFATAL, "cannot use relocatable"
-                                  " expression as symbol size");
+                            nasm_nonfatal("cannot use relocatable"
+                                          " expression as symbol size");
                         else
                             sym->size = reloc_value(e);
                     }
                 }
-                stdscan_set(saveme);
+                stdscan_reset(saveme);
             }
             special_used = true;
         }
@@ -422,7 +384,7 @@ static void aout_deflabel(char *name, int32_t segment, int64_t offset,
         nsyms++;                /* and another for the size */
 
     if (special && !special_used)
-        nasm_error(ERR_NONFATAL, "no special symbol features supported here");
+        nasm_nonfatal("no special symbol features supported here");
 }
 
 static void aout_add_reloc(struct Section *sect, int32_t segment,
@@ -490,8 +452,8 @@ static int32_t aout_add_gsym_reloc(struct Section *sect,
         shead = sbss.gsyms;
     if (!shead) {
         if (exact && offset != 0)
-            nasm_error(ERR_NONFATAL, "unable to find a suitable global symbol"
-                  " for this reference");
+            nasm_nonfatal("unable to find a suitable global symbol"
+                          " for this reference");
         else
             aout_add_reloc(sect, segment, type, bytes);
         return offset;
@@ -504,6 +466,11 @@ static int32_t aout_add_gsym_reloc(struct Section *sect,
         list_for_each(sym, shead)
             if (sym->value == offset)
                 break;
+        if (!sym) {
+            nasm_nonfatal("unable to find a suitable global symbol"
+                          " for this reference");
+            return 0;
+        }
     } else {
         /*
          * Find the nearest symbol below this one.
@@ -512,11 +479,11 @@ static int32_t aout_add_gsym_reloc(struct Section *sect,
         list_for_each(sm, shead)
             if (sm->value <= offset && (!sym || sm->value > sym->value))
                 sym = sm;
-    }
-    if (!sym && exact) {
-        nasm_error(ERR_NONFATAL, "unable to find a suitable global symbol"
-              " for this reference");
-        return 0;
+        if (!sym) {
+            nasm_nonfatal("unable to find a suitable nearest symbol"
+                          " below this reference");
+            return 0;
+        }
     }
 
     r = *sect->tail = nasm_malloc(sizeof(struct Reloc));
@@ -560,9 +527,11 @@ static int32_t aout_add_gotoff_reloc(struct Section *sect, int32_t segment,
         asym = sdata.asym;
     else if (segment == sbss.index)
         asym = sbss.asym;
-    if (!asym)
-        nasm_error(ERR_NONFATAL, "`..gotoff' relocations require a non-global"
-              " symbol in the section");
+    if (!asym) {
+        nasm_nonfatal("`..gotoff' relocations require a non-global"
+                      " symbol in the section");
+        return 0;
+    }
 
     r = *sect->tail = nasm_malloc(sizeof(struct Reloc));
     sect->tail = &r->next;
@@ -578,10 +547,9 @@ static int32_t aout_add_gotoff_reloc(struct Section *sect, int32_t segment,
     return offset - asym->value;
 }
 
-static void aout_out(int32_t segto, const void *data,
-		     enum out_type type, uint64_t size,
-                     int32_t segment, int32_t wrt)
+static void aout_out(const struct out_data *out)
 {
+    OUT_LEGACY(out,segto,data,type,size,segment,wrt);
     struct Section *s;
     int32_t addr;
     uint8_t mydata[4], *p;
@@ -593,14 +561,14 @@ static void aout_out(int32_t segto, const void *data,
     else if (segto == sbss.index)
         s = NULL;
     else {
-        nasm_error(ERR_WARNING, "attempt to assemble code in"
-              " segment %d: defaulting to `.text'", segto);
+        nasm_warn(WARN_OTHER, "attempt to assemble code in"
+                  " unknown section: defaulting to `.text'");
         s = &stext;
     }
 
     if (!s && type != OUT_RESERVE) {
-        nasm_error(ERR_WARNING, "attempt to initialize memory in the"
-              " BSS section: ignored");
+        nasm_warn(WARN_OTHER, "attempt to initialize memory in the"
+                  " BSS section: ignored");
         sbss.len += realsize(type, size);
         return;
     }
@@ -609,9 +577,9 @@ static void aout_out(int32_t segto, const void *data,
 
     if (type == OUT_RESERVE) {
         if (s) {
-            nasm_error(ERR_WARNING, "uninitialized space declared in"
-                  " %s section: zeroing",
-                  (segto == stext.index ? "code" : "data"));
+            nasm_warn(WARN_ZEROING, "uninitialized space declared in"
+                      " %s section: zeroing",
+                      (segto == stext.index ? "code" : "data"));
             aout_sect_write(s, NULL, size);
         } else
             sbss.len += size;
@@ -622,15 +590,14 @@ static void aout_out(int32_t segto, const void *data,
         addr = *(int64_t *)data;
         if (segment != NO_SEG) {
             if (segment % 2) {
-                nasm_error(ERR_NONFATAL, "a.out format does not support"
-                      " segment base references");
+                nasm_nonfatal("a.out format does not support"
+                              " segment base references");
             } else {
                 if (wrt == NO_SEG) {
                     aout_add_reloc(s, segment, RELTYPE_ABSOLUTE, asize);
                 } else if (!bsd) {
-                    nasm_error(ERR_NONFATAL,
-                          "Linux a.out format does not support"
-                          " any use of WRT");
+                    nasm_nonfatal("Linux a.out format does not support"
+                                  " any use of WRT");
                     wrt = NO_SEG;       /* we can at least _try_ to continue */
                 } else if (wrt == aout_gotpc_sect + 1) {
                     is_pic = 0x40;
@@ -648,13 +615,11 @@ static void aout_out(int32_t segto, const void *data,
                                                false);
                 } else if (wrt == aout_plt_sect + 1) {
                     is_pic = 0x40;
-                    nasm_error(ERR_NONFATAL,
-                          "a.out format cannot produce non-PC-"
-                          "relative PLT references");
+                    nasm_nonfatal("a.out format cannot produce non-PC-"
+                                  "relative PLT references");
                 } else {
-                    nasm_error(ERR_NONFATAL,
-                          "a.out format does not support this"
-                          " use of WRT");
+                    nasm_nonfatal("a.out format does not support this"
+                                  " use of WRT");
                     wrt = NO_SEG;       /* we can at least _try_ to continue */
                 }
             }
@@ -667,14 +632,14 @@ static void aout_out(int32_t segto, const void *data,
         aout_sect_write(s, mydata, asize);
     } else if (type == OUT_REL2ADR) {
         if (segment != NO_SEG && segment % 2) {
-            nasm_error(ERR_NONFATAL, "a.out format does not support"
-                  " segment base references");
+            nasm_nonfatal("a.out format does not support"
+                          " segment base references");
         } else {
             if (wrt == NO_SEG) {
                 aout_add_reloc(s, segment, RELTYPE_RELATIVE, 2);
             } else if (!bsd) {
-                nasm_error(ERR_NONFATAL, "Linux a.out format does not support"
-                      " any use of WRT");
+                nasm_nonfatal("Linux a.out format does not support"
+                              " any use of WRT");
                 wrt = NO_SEG;   /* we can at least _try_ to continue */
             } else if (wrt == aout_plt_sect + 1) {
                 is_pic = 0x40;
@@ -682,11 +647,11 @@ static void aout_out(int32_t segto, const void *data,
             } else if (wrt == aout_gotpc_sect + 1 ||
                        wrt == aout_gotoff_sect + 1 ||
                        wrt == aout_got_sect + 1) {
-                nasm_error(ERR_NONFATAL, "a.out format cannot produce PC-"
-                      "relative GOT references");
+                nasm_nonfatal("a.out format cannot produce PC-"
+                              "relative GOT references");
             } else {
-                nasm_error(ERR_NONFATAL, "a.out format does not support this"
-                      " use of WRT");
+                nasm_nonfatal("a.out format does not support this"
+                              " use of WRT");
                 wrt = NO_SEG;   /* we can at least _try_ to continue */
             }
         }
@@ -695,14 +660,14 @@ static void aout_out(int32_t segto, const void *data,
         aout_sect_write(s, mydata, 2L);
     } else if (type == OUT_REL4ADR) {
         if (segment != NO_SEG && segment % 2) {
-            nasm_error(ERR_NONFATAL, "a.out format does not support"
-                  " segment base references");
+            nasm_nonfatal("a.out format does not support"
+                          " segment base references");
         } else {
             if (wrt == NO_SEG) {
                 aout_add_reloc(s, segment, RELTYPE_RELATIVE, 4);
             } else if (!bsd) {
-                nasm_error(ERR_NONFATAL, "Linux a.out format does not support"
-                      " any use of WRT");
+                nasm_nonfatal("Linux a.out format does not support"
+                              " any use of WRT");
                 wrt = NO_SEG;   /* we can at least _try_ to continue */
             } else if (wrt == aout_plt_sect + 1) {
                 is_pic = 0x40;
@@ -710,11 +675,11 @@ static void aout_out(int32_t segto, const void *data,
             } else if (wrt == aout_gotpc_sect + 1 ||
                        wrt == aout_gotoff_sect + 1 ||
                        wrt == aout_got_sect + 1) {
-                nasm_error(ERR_NONFATAL, "a.out format cannot produce PC-"
-                      "relative GOT references");
+                nasm_nonfatal("a.out format cannot produce PC-"
+                              "relative GOT references");
             } else {
-                nasm_error(ERR_NONFATAL, "a.out format does not support this"
-                      " use of WRT");
+                nasm_nonfatal("a.out format does not support this"
+                              " use of WRT");
                 wrt = NO_SEG;   /* we can at least _try_ to continue */
             }
         }
@@ -880,7 +845,7 @@ extern macros_t aout_stdmac[];
 #ifdef OF_AOUT
 
 const struct ofmt of_aout = {
-    "Linux a.out object files",
+    "Linux a.out",
     "aout",
     ".o",
     0,
@@ -890,7 +855,6 @@ const struct ofmt of_aout = {
     aout_stdmac,
     aout_init,
     null_reset,
-    nasm_do_legacy_output,
     aout_out,
     aout_deflabel,
     aout_section_names,
@@ -907,7 +871,7 @@ const struct ofmt of_aout = {
 #ifdef OF_AOUTB
 
 const struct ofmt of_aoutb = {
-    "NetBSD/FreeBSD a.out object files",
+    "NetBSD/FreeBSD a.out",
     "aoutb",
     ".o",
     0,
@@ -917,7 +881,6 @@ const struct ofmt of_aoutb = {
     aout_stdmac,
     aoutb_init,
     null_reset,
-    nasm_do_legacy_output,
     aout_out,
     aout_deflabel,
     aout_section_names,

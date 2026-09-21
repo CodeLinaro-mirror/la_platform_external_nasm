@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2009 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2019 The NASM Authors - All Rights Reserved */
 
 /*
  * Internal definitions common to outelf32 and outelf64
@@ -41,10 +11,6 @@
 #include "rbtree.h"
 #include "saa.h"
 
-/* symbol binding */
-#define SYM_GLOBAL      ELF32_ST_MKBIND(STB_GLOBAL)
-#define SYM_LOCAL       ELF32_ST_MKBIND(STB_LOCAL)
-
 #define GLOBAL_TEMP_BASE  0x40000000 /* bigger than any sane symbol index */
 
 /* alignment of sections in file */
@@ -53,31 +19,14 @@
 /* this stuff is needed for the dwarf/stabs debugging format */
 #define TY_DEBUGSYMLIN 0x40     /* internal call to debug_out */
 
-/* Known sections with nonstandard defaults */
-struct elf_known_section {
-    const char *name;   /* Name of section */
-    int type;           /* Section type (SHT_) */
-    uint32_t flags;     /* Section flags (SHF_) */
-    uint32_t align;     /* Section alignment */
-};
-extern const struct elf_known_section elf_known_sections[];
-
 /*
- * Special ELF sections (after the real sections but before debugging ones)
- */
-#define sec_shstrtab            (nsects + 1)
-#define sec_symtab              (nsects + 2)
-#define sec_strtab              (nsects + 3)
-#define sec_numspecial          3
-
-/*
- * Debugging ELF sections (last in the file)
+ * Debugging ELF sections (section indices starting with sec_debug)
  */
 
 /* stabs */
-#define sec_stab                (nsections-3)
-#define sec_stabstr             (nsections-2)
-#define sec_rel_stab            (nsections-1)
+#define sec_stab                (sec_debug + 0)
+#define sec_stabstr             (sec_debug + 1)
+#define sec_rel_stab            (sec_debug + 2)
 
 /* stabs symbol table format */
 struct stabentry {
@@ -89,16 +38,16 @@ struct stabentry {
 };
 
 /* dwarf */
-#define sec_debug_aranges       (nsections-10)
-#define sec_rela_debug_aranges  (nsections-9)
-#define sec_debug_pubnames      (nsections-8)
-#define sec_debug_info          (nsections-7)
-#define sec_rela_debug_info     (nsections-6)
-#define sec_debug_abbrev        (nsections-5)
-#define sec_debug_line          (nsections-4)
-#define sec_rela_debug_line     (nsections-3)
-#define sec_debug_frame         (nsections-2)
-#define sec_debug_loc           (nsections-1)
+#define sec_debug_aranges       (sec_debug + 0)
+#define sec_rela_debug_aranges  (sec_debug + 1)
+#define sec_debug_pubnames      (sec_debug + 2)
+#define sec_debug_info          (sec_debug + 3)
+#define sec_rela_debug_info     (sec_debug + 4)
+#define sec_debug_abbrev        (sec_debug + 5)
+#define sec_debug_line          (sec_debug + 6)
+#define sec_rela_debug_line     (sec_debug + 7)
+#define sec_debug_frame         (sec_debug + 8)
+#define sec_debug_loc           (sec_debug + 9)
 
 extern uint8_t elf_osabi;
 extern uint8_t elf_abiver;
@@ -137,13 +86,15 @@ struct elf_section {
     uint64_t            len;
     uint64_t            size;
     uint64_t            nrelocs;
-    int32_t             index;
-    int                 type;           /* SHT_PROGBITS or SHT_NOBITS */
+    int32_t             index;		/* NASM index or NO_SEG if internal */
+    int			shndx;          /* ELF index */
+    int                 type;           /* SHT_* */
     uint64_t            align;          /* alignment: power of two */
     uint64_t            flags;          /* section flags */
+    int64_t		pass_last_seen;
+    uint64_t		entsize;        /* entry size */
     char                *name;
     struct SAA          *rel;
-    uint64_t             rellen;
     struct elf_reloc    *head;
     struct elf_reloc    **tail;
     struct rbtree       *gsyms;         /* global symbols in section */
