@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2016 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2022 The NASM Authors - All Rights Reserved */
 
 /*
  * outieee.c	output routines for the Netwide Assembler to produce
@@ -67,15 +37,13 @@
  */
 #include "compiler.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <time.h>
-#include <stdarg.h>             /* Note: we need the ANSI version of stdarg.h */
-#include <ctype.h>
+#include <ctype.h>              /* For toupper() */
+#include "nctype.h"
 
 #include "nasm.h"
 #include "nasmlib.h"
+#include "asmutil.h"
 #include "error.h"
 #include "ver.h"
 
@@ -87,7 +55,7 @@
 #define ARRAY_BOT 0x1
 
 static char ieee_infile[FILENAME_MAX];
-static int ieee_uppercase;
+static bool ieee_uppercase;
 
 static bool any_segs;
 static int arrindex;
@@ -146,11 +114,12 @@ static struct ieeeSection {
     struct ieeeObjData *data, *datacurr;
     struct ieeeFixupp *fptr, *flptr;
     int32_t index;                 /* the NASM segment id */
-    int32_t ieee_index;            /* the OBJ-file segment index */
+    int32_t ieee_index;            /* the IEEE-file segment index */
     int32_t currentpos;
     int32_t align;                 /* can be SEG_ABS + absolute addr */
     int32_t startpos;
     int32_t use32;                 /* is this segment 32-bit? */
+    int64_t pass_last_seen;
     struct ieeePublic *pubhead, **pubtail, *lochead, **loctail;
     enum {
         CMB_PRIVATE = 0,
@@ -193,7 +162,7 @@ static void ieee_data_new(struct ieeeSection *);
 static void ieee_write_fixup(int32_t, int32_t, struct ieeeSection *,
                              int, uint64_t, int32_t);
 static void ieee_install_fixup(struct ieeeSection *, struct ieeeFixupp *);
-static int32_t ieee_segment(char *, int, int *);
+static int32_t ieee_segment(char *, int *);
 static void ieee_write_file(void);
 static void ieee_write_byte(struct ieeeSection *, int);
 static void ieee_write_word(struct ieeeSection *, int);
@@ -294,9 +263,8 @@ static void ieee_deflabel(char *name, int32_t segment,
     struct ieeeSection *seg;
     int i;
 
-    if (special) {
-        nasm_error(ERR_NONFATAL, "unrecognised symbol type `%s'", special);
-    }
+    if (special)
+        nasm_nonfatal("unrecognised symbol type `%s'", special);
     /*
      * First check for the double-period, signifying something
      * unusual.
@@ -390,10 +358,9 @@ static void ieee_deflabel(char *name, int32_t segment,
 /*
  * Put data out
  */
-static void ieee_out(int32_t segto, const void *data,
-		     enum out_type type, uint64_t size,
-                     int32_t segment, int32_t wrt)
+static void ieee_out(const struct out_data *out)
 {
+    OUT_LEGACY(out,segto,data,type,size,segment,wrt);
     const uint8_t *ucdata;
     int32_t ldata;
     struct ieeeSection *seg;
@@ -404,12 +371,12 @@ static void ieee_out(int32_t segto, const void *data,
      */
     if (!any_segs) {
         int tempint;            /* ignored */
-        if (segto != ieee_segment("__NASMDEFSEG", 2, &tempint))
+        if (segto != ieee_segment("__NASMDEFSEG", &tempint))
             nasm_panic("strange segment conditions in IEEE driver");
     }
 
     /*
-     * Find the segment we are targetting.
+     * Find the segment we are targeting.
      */
     for (seg = seghead; seg; seg = seg->next)
         if (seg->index == segto)
@@ -426,8 +393,8 @@ static void ieee_out(int32_t segto, const void *data,
         if (type == OUT_ADDRESS)
             size = abs((int)size);
         else if (segment == NO_SEG)
-            nasm_error(ERR_NONFATAL, "relative call to absolute address not"
-                  " supported by IEEE format");
+            nasm_nonfatal("relative call to absolute address not"
+                          " supported by IEEE format");
         ldata = *(int64_t *)data;
         if (type == OUT_REL2ADR)
             ldata += (size - 2);
@@ -516,14 +483,13 @@ static void ieee_write_fixup(int32_t segment, int32_t wrt,
                             s.addend = 0;
                             s.id2 = eb->index[i];
                         } else
-                            nasm_error(ERR_NONFATAL,
-                                  "Source of WRT must be an offset");
+                            nasm_nonfatal("source of WRT must be an offset");
                     }
 
                 } else
                     nasm_panic("unrecognised WRT value in ieee_write_fixup");
             } else
-                nasm_error(ERR_NONFATAL, "target of WRT must be a section ");
+                nasm_nonfatal("target of WRT must be a section");
         }
         s.size = size;
         ieee_install_fixup(segto, &s);
@@ -630,8 +596,8 @@ static void ieee_write_fixup(int32_t segment, int32_t wrt,
             }
         }
         if (size != 2 && s.ftype == FT_SEG)
-            nasm_error(ERR_NONFATAL, "IEEE format can only handle 2-byte"
-                  " segment base references");
+            nasm_nonfatal("IEEE format can only handle 2-byte"
+                          " segment base references");
         s.size = size;
         ieee_install_fixup(segto, &s);
         return;
@@ -657,7 +623,7 @@ static void ieee_install_fixup(struct ieeeSection *seg,
 /*
  * segment registry
  */
-static int32_t ieee_segment(char *name, int pass, int *bits)
+static int32_t ieee_segment(char *name, int *bits)
 {
     /*
      * We call the label manager here to define a name for the new
@@ -707,13 +673,15 @@ static int32_t ieee_segment(char *name, int pass, int *bits)
         for (seg = seghead; seg; seg = seg->next) {
             ieee_idx++;
             if (!strcmp(seg->name, name)) {
-                if (attrs > 0 && pass == 1)
-                    nasm_error(ERR_WARNING, "segment attributes specified on"
-                          " redeclaration of segment: ignoring");
+                if (attrs > 0 && seg->pass_last_seen == pass_count())
+                    nasm_warn(WARN_OTHER, "segment attributes specified on"
+                              " redeclaration of segment: ignoring");
                 if (seg->use32)
                     *bits = 32;
                 else
                     *bits = 16;
+
+                seg->pass_last_seen = pass_count();
                 return seg->index;
             }
         }
@@ -764,8 +732,7 @@ static int32_t ieee_segment(char *name, int pass, int *bits)
                     seg->align = 1;
                 if (rn_error) {
                     seg->align = 1;
-                    nasm_error(ERR_NONFATAL, "segment alignment should be"
-                          " numeric");
+                    nasm_nonfatal("segment alignment should be numeric");
                 }
                 switch (seg->align) {
                 case 1:        /* BYTE */
@@ -779,16 +746,15 @@ static int32_t ieee_segment(char *name, int pass, int *bits)
                 case 128:
                     break;
                 default:
-                    nasm_error(ERR_NONFATAL, "invalid alignment value %d",
-                          seg->align);
+                    nasm_nonfatal("invalid alignment value %d", seg->align);
                     seg->align = 1;
                     break;
                 }
             } else if (!nasm_strnicmp(p, "absolute=", 9)) {
                 seg->align = SEG_ABS + readnum(p + 9, &rn_error);
                 if (rn_error)
-                    nasm_error(ERR_NONFATAL, "argument to `absolute' segment"
-                          " attribute should be numeric");
+                    nasm_nonfatal("argument to `absolute' segment"
+                                  " attribute should be numeric");
             }
         }
 
@@ -798,6 +764,23 @@ static int32_t ieee_segment(char *name, int pass, int *bits)
         else
             define_label(name, seg->index + 1, 0L, false);
         ieee_seg_needs_update = NULL;
+
+        /*
+         * In commit 98578071b9d71ecaa2344dd9c185237c1765041e
+         * we reworked labels significantly which in turn lead
+         * to the case where seg->name = NULL here and we get
+         * nil dereference in next segments definitions.
+         *
+         * Lets placate this case with explicit name setting
+         * if labels engine didn't set it yet.
+         *
+         * FIXME: Need to revisit this moment if such fix doesn't
+         * break anything but since IEEE 695 format is veeery
+         * old I don't expect there are many users left. In worst
+         * case this should only lead to a memory leak.
+         */
+        if (!seg->name)
+            seg->name = nasm_strdup(name);
 
         if (seg->use32)
             *bits = 32;
@@ -811,15 +794,13 @@ static int32_t ieee_segment(char *name, int pass, int *bits)
  * directives supported
  */
 static enum directive_result
-ieee_directive(enum directive directive, char *value, int pass)
+ieee_directive(enum directive directive, char *value)
 {
-
     (void)value;
-    (void)pass;
 
     switch (directive) {
     case D_UPPERCASE:
-        ieee_uppercase = true;
+        get_boolean_option(value, &ieee_uppercase);
         return DIRR_OK;
 
     default:
@@ -893,7 +874,7 @@ static void ieee_write_file(void)
     /*
      * Write the NASM boast comment.
      */
-    ieee_putascii("CO0,%02X%s.\n", strlen(nasm_comment), nasm_comment);
+    ieee_putascii("CO0,%02X%s.\n", nasm_comment_len(), nasm_comment());
 
     /*
      * write processor-specific information
@@ -925,7 +906,7 @@ static void ieee_write_file(void)
      * Write the section headers
      */
     seg = seghead;
-    if (!debuginfo && !strcmp(seg->name, "??LINE"))
+    if (!debuginfo && seg && !strcmp(seg->name, "??LINE"))
         seg = seg->next;
     while (seg) {
         char buf[256];
@@ -960,7 +941,7 @@ static void ieee_write_file(void)
     /*
      * write the start address if there is one
      */
-    if (ieee_entry_seg) {
+    if (ieee_entry_seg && seghead) {
         for (seg = seghead; seg; seg = seg->next)
             if (seg->index == ieee_entry_seg)
                 break;
@@ -1073,7 +1054,7 @@ static void ieee_write_file(void)
      *  put out section data;
      */
     seg = seghead;
-    if (!debuginfo && !strcmp(seg->name, "??LINE"))
+    if (!debuginfo && seg && !strcmp(seg->name, "??LINE"))
         seg = seg->next;
     while (seg) {
         if (seg->currentpos) {
@@ -1134,15 +1115,15 @@ static void ieee_write_dword(struct ieeeSection *seg, int32_t data)
     ieee_write_byte(seg, (data >> 16) & 0xFF);
     ieee_write_byte(seg, (data >> 24) & 0xFF);
 }
-static void ieee_putascii(char *format, ...)
+static void printf_func(1, 2) ieee_putascii(char *format, ...)
 {
     char buffer[256];
-    int i, l;
+    size_t i, l;
     va_list ap;
 
     va_start(ap, format);
-    vsnprintf(buffer, sizeof(buffer), format, ap);
-    l = strlen(buffer);
+    l = vsnprintf(buffer, sizeof(buffer), format, ap);
+    nasm_assert(l < sizeof(buffer));
     for (i = 0; i < l; i++)
         if ((uint8_t)buffer[i] > 31)
             checksum += buffer[i];
@@ -1190,7 +1171,7 @@ static int32_t ieee_putld(int32_t start, int32_t end, uint8_t *buf)
         start++;
     }
     ieee_putascii(".\n");
-    return (start);
+    return start;
 }
 static int32_t ieee_putlr(struct ieeeFixupp *p)
 {
@@ -1199,7 +1180,7 @@ static int32_t ieee_putlr(struct ieeeFixupp *p)
  * defines two types of segments: absolute and virtual.  Note that
  * 'absolute' in this context is a different thing from the IEEE
  * definition of an absolute segment type, which is also supported. If a
- * sement is linked in virtual mode the low limit (L-var) is
+ * segment is linked in virtual mode the low limit (L-var) is
  * subtracted from each R,X, and P variable which appears in an
  * expression, so that we can have relative offsets.  Meanwhile
  * in the ABSOLUTE mode this subtraction is not done and
@@ -1256,7 +1237,7 @@ static int32_t ieee_putlr(struct ieeeFixupp *p)
     }
     ieee_putascii("LR(%s,%"PRIX32").\n", buf, size);
 
-    return (size);
+    return size;
 }
 
 /* Dump all segment data (text and fixups )*/
@@ -1279,7 +1260,7 @@ static void dbgls_init(void)
     arrindex = ARRAY_BOT;
     arrhead = NULL;
     arrtail = &arrhead;
-    ieee_segment("??LINE", 2, &tempint);
+    ieee_segment("??LINE", &tempint);
     any_segs = false;
 }
 static void dbgls_cleanup(void)
@@ -1310,7 +1291,7 @@ static void dbgls_cleanup(void)
  * because this routine is not bracketed in
  * the main program, this routine will be called even if there
  * is no request for debug info
- * so, we have to make sure the ??LINE segment is avaialbe
+ * so, we have to make sure the ??LINE segment is available
  * as the first segment when this debug format is selected
  */
 static void dbgls_linnum(const char *lnfname, int32_t lineno, int32_t segto)
@@ -1327,12 +1308,12 @@ static void dbgls_linnum(const char *lnfname, int32_t lineno, int32_t segto)
      */
     if (!any_segs) {
         int tempint;            /* ignored */
-        if (segto != ieee_segment("__NASMDEFSEG", 2, &tempint))
-            nasm_panic("strange segment conditions in OBJ driver");
+        if (segto != ieee_segment("__NASMDEFSEG", &tempint))
+            nasm_panic("strange segment conditions in IEEE driver");
     }
 
     /*
-     * Find the segment we are targetting.
+     * Find the segment we are targeting.
      */
     for (seg = seghead; seg; seg = seg->next)
         if (seg->index == segto)
@@ -1470,6 +1451,9 @@ static const struct dfmt ladsoft_debug_form = {
     dbgls_init,
     dbgls_linnum,
     dbgls_deflabel,
+    NULL,                       /* .debug_smacros */
+    NULL,                       /* .debug_include */
+    NULL,                       /* .debug_mmacros */
     null_debug_directive,
     dbgls_typevalue,
     dbgls_output,
@@ -1492,7 +1476,6 @@ const struct ofmt of_ieee = {
     NULL,
     ieee_init,
     null_reset,
-    nasm_do_legacy_output,
     ieee_out,
     ieee_deflabel,
     ieee_segment,

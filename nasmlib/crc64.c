@@ -1,41 +1,11 @@
-/* ----------------------------------------------------------------------- *
- *   
- *   Copyright 1996-2014 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *     
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2014 The NASM Authors - All Rights Reserved */
 
 #include "compiler.h"
-#include "nasmlib.h"
+#include "nctype.h"
 #include "hashtbl.h"
 
-static const uint64_t crc64_tab[256] = {
+const uint64_t crc64_tab[256] = {
     UINT64_C(0x0000000000000000), UINT64_C(0x7ad870c830358979),
     UINT64_C(0xf5b0e190606b12f2), UINT64_C(0x8f689158505e9b8b),
     UINT64_C(0xc038e5739841b68f), UINT64_C(0xbae095bba8743ff6),
@@ -170,9 +140,8 @@ uint64_t crc64(uint64_t crc, const char *str)
 {
     uint8_t c;
 
-    while ((c = *str++) != 0) {
-	crc = crc64_tab[(uint8_t)crc ^ c] ^ (crc >> 8);
-    }
+    while ((c = *str++) != 0)
+        crc = crc64_byte(crc, c);
 
     return crc;
 }
@@ -181,9 +150,28 @@ uint64_t crc64i(uint64_t crc, const char *str)
 {
     uint8_t c;
 
-    while ((c = *str++) != 0) {
-	crc = crc64_tab[(uint8_t)crc ^ nasm_tolower(c)] ^ (crc >> 8);
-    }
+    while ((c = *str++) != 0)
+	crc = crc64_byte(crc, nasm_tolower(c));
+
+    return crc;
+}
+
+uint64_t crc64b(uint64_t crc, const void *data, size_t len)
+{
+    const uint8_t *str = data;
+
+    while (len--)
+        crc = crc64_byte(crc, *str++);
+
+    return crc;
+}
+
+uint64_t crc64ib(uint64_t crc, const void *data, size_t len)
+{
+    const uint8_t *str = data;
+
+    while (len--)
+        crc = crc64_byte(crc, nasm_tolower(*str++));
 
     return crc;
 }
