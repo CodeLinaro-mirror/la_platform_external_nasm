@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2018 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2025 The NASM Authors - All Rights Reserved */
 
 /*
  * Parse and handle assembler directives
@@ -37,16 +7,13 @@
 
 #include "compiler.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
-#include <limits.h>
+#include "nctype.h"
 
 #include "nasm.h"
 #include "nasmlib.h"
 #include "ilog2.h"
 #include "error.h"
-#include "float.h"
+#include "floats.h"
 #include "stdscan.h"
 #include "preproc.h"
 #include "eval.h"
@@ -55,6 +22,7 @@
 #include "listing.h"
 #include "labels.h"
 #include "iflag.h"
+#include "quote.h"
 
 struct cpunames {
     const char *name;
@@ -62,11 +30,25 @@ struct cpunames {
     /* Eventually a table of features */
 };
 
-static iflag_t get_cpu(const char *value)
+static void iflag_set_cpu(iflag_t *a, unsigned int lvl)
 {
-    iflag_t r;
-    const struct cpunames *cpu;
+    a->field[0] = 0;     /* Not applicable to the CPU type */
+    iflag_set_all_features(a);    /* All feature masking bits set for now */
+    if (lvl >= IF_ANY) {
+        /* This is a hack for now */
+        iflag_set(a, IF_LATEVEX);
+    }
+    a->field[IF_CPU_FIELD] &= ~IF_CPU_LEVEL_MASK;
+    iflag_set(a, lvl);
+}
+
+void set_cpu(const char *value)
+{
+    const char *p;
+    char modifier;
+    const struct cpunames *cpuflag;
     static const struct cpunames cpunames[] = {
+        { "default", IF_DEFAULT }, /* Must be first */
         { "8086", IF_8086 },
         { "186",  IF_186  },
         { "286",  IF_286  },
@@ -93,26 +75,78 @@ static iflag_t get_cpu(const char *value)
         { "itanium", IF_IA64 },
         { "itanic", IF_IA64 },
         { "merced", IF_IA64 },
-        { "any", IF_PLEVEL },
-        { "default", IF_PLEVEL },
-        { "all", IF_PLEVEL },
-        { NULL, IF_PLEVEL }     /* Error and final default entry */
+        { "nehalem", IF_NEHALEM },
+        { "westmere", IF_WESTMERE },
+        { "sandybridge", IF_SANDYBRIDGE },
+        { "ivybridge", IF_FUTURE },
+        { "any", IF_ANY },
+        { "all", IF_ANY },
+        { "latevex", IF_LATEVEX },
+        { "apx", IF_APX },
+        { "evex", IF_EVEX },
+        { "vex", IF_VEX },
+        { NULL, 0 }
     };
 
-    iflag_clear_all(&r);
+    if (!value) {
+        iflag_set_cpu(&cpu, cpunames[0].level);
+        return;
+    }
 
-    for (cpu = cpunames; cpu->name; cpu++) {
-        if (!nasm_stricmp(value, cpu->name))
+    p = value;
+    modifier = '+';
+    while (*p) {
+        int len = strcspn(p, " ,");
+
+        while (len && (*p == '+' || *p == '-' || *p == '*')) {
+            modifier = *p++;
+            len--;
+            if (!len && modifier == '*')
+                cpu = cmd_cpu;
+        }
+
+        if (len) {
+            bool invert_flag = false;
+
+            if (len >= 3 && !nasm_memicmp(p, "no", 2)) {
+                invert_flag = true;
+                p += 2;
+                len -= 2;
+            }
+
+            for (cpuflag = cpunames; cpuflag->name; cpuflag++)
+                if (!nasm_strnicmp(p, cpuflag->name, len))
+                    break;
+
+            if (!cpuflag->name) {
+                nasm_nonfatal("unknown CPU type or flag '%.*s'", len, p);
+                return;
+            }
+
+            if (cpuflag->level >= IF_CPU_FIRST && cpuflag->level <= IF_ANY) {
+                iflag_set_cpu(&cpu, cpuflag->level);
+            } else {
+                switch (modifier) {
+                case '-':
+                    invert_flag = !invert_flag;
+                    break;
+                case '*':
+                    invert_flag ^= iflag_test(&cmd_cpu, cpuflag->level);
+                    break;
+                default:
+                    break;
+                }
+
+                iflag_set(&cpu, cpuflag->level);
+                if (invert_flag)
+                    iflag_clear(&cpu, cpuflag->level);
+            }
+        }
+        p += len;
+        if (!*p)
             break;
+        p++;                /* Skip separator */
     }
-
-    if (!cpu->name) {
-        nasm_error(pass0 < 2 ? ERR_NONFATAL : ERR_FATAL,
-                   "unknown 'cpu' type '%s'", value);
-    }
-
-    iflag_set_cpu(&r, cpu->level);
-    return r;
 }
 
 static int get_bits(const char *value)
@@ -124,22 +158,19 @@ static int get_bits(const char *value)
         break;                  /* Always safe */
     case 32:
         if (!iflag_cpu_level_ok(&cpu, IF_386)) {
-            nasm_error(ERR_NONFATAL,
-                       "cannot specify 32-bit segment on processor below a 386");
+            nasm_nonfatal("cannot specify 32-bit segment on processor below a 386");
             i = 16;
         }
         break;
     case 64:
         if (!iflag_cpu_level_ok(&cpu, IF_X86_64)) {
-            nasm_error(ERR_NONFATAL,
-                       "cannot specify 64-bit segment on processor below an x86-64");
+            nasm_nonfatal("cannot specify 64-bit segment on processor below an x86-64");
             i = 16;
         }
         break;
     default:
-        nasm_error(pass0 < 2 ? ERR_NONFATAL : ERR_FATAL,
-                   "`%s' is not a valid segment size; must be 16, 32 or 64",
-                   value);
+        nasm_nonfatal("`%s' is not a valid segment size; must be 16, 32 or 64",
+                      value);
         i = 16;
         break;
     }
@@ -148,34 +179,51 @@ static int get_bits(const char *value)
 
 static enum directive parse_directive_line(char **directive, char **value)
 {
-    char *p, *q, *buf;
+    char *p, *q, *eol, *buf;
+    char c;
 
     buf = nasm_skip_spaces(*directive);
 
     /*
      * It should be enclosed in [ ].
-     * XXX: we don't check there is nothing else on the remainder of the
-     * line, except a possible comment.
+     *
+     * Strip off the comments.  We should really strip the comments in
+     * generic code, not here.  While we're at it, it would be better
+     * to pass the backend a series of tokens instead of a raw string,
+     * and actually process quoted strings for it, like of like argv
+     * is handled in C.
      */
     if (*buf != '[')
         return D_none;
-    q = strchr(buf, ']');
-    if (!q)
-        return D_corrupt;
+
+    q = buf;
+    while ((c = *q) != ']') {
+        switch (c) {
+        case '\0':
+        case ';':
+            return D_corrupt;   /* No ] in directive */
+        case '\'':
+        case '\"':
+        case '`':
+            q = nasm_skip_string(q);
+            if (!*q++)
+                return D_corrupt;
+            break;
+        default:
+            q++;
+            break;
+        }
+    }
 
     /*
-     * Strip off the comments.  XXX: this doesn't account for quoted
-     * strings inside a directive.  We should really strip the
-     * comments in generic code, not here.  While we're at it, it
-     * would be better to pass the backend a series of tokens instead
-     * of a raw string, and actually process quoted strings for it,
-     * like of like argv is handled in C.
+     * Found the ] at the end of the directive. Make sure there isn't
+     * anything else at the end of the line, except a possible
+     * comment.
      */
-    p = strchr(buf, ';');
-    if (p) {
-        if (p < q) /* ouch! somewhere inside */
-            return D_corrupt;
-        *p = '\0';
+    eol = nasm_skip_spaces(q+1);
+    if (*eol != '\0' && *eol != ';') {
+        nasm_warn(WARN_DIRECTIVE_GARBAGE_EOL,
+                  "garbage found on line after directive");
     }
 
     /* no brace, no trailing spaces */
@@ -198,6 +246,26 @@ static enum directive parse_directive_line(char **directive, char **value)
 }
 
 /*
+ * Check to see if a string matches a valid directive name (sans [],
+ * whitespace must be already trimmed.)
+ */
+bool directive_valid(const char *directive)
+{
+    enum directive d;
+
+    d = directive_find(directive);
+
+    if (d <= D_corrupt)
+        return false;
+    else if (d < D_ofmt)
+        return true;            /* Global directive or pseudo-op */
+    else if (d < D_pragma_tokens)
+        return ofmt->directive(d, NULL) == DIRR_OK;
+    else
+        return false;
+}
+
+/*
  * Process a line from the assembler and try to handle it if it
  * is a directive.  Return true if the line was handled (including
  * if it was an error), false otherwise.
@@ -208,51 +276,57 @@ bool process_directives(char *directive)
     char *value, *p, *q, *special;
     struct tokenval tokval;
     bool bad_param = false;
-    int pass2 = passn > 1 ? 2 : 1;
     enum label_type type;
 
     d = parse_directive_line(&directive, &value);
 
     switch (d) {
     case D_none:
-        return D_none;      /* Not a directive */
+        return false;
 
     case D_corrupt:
-	nasm_error(ERR_NONFATAL, "invalid directive line");
+	nasm_nonfatal("invalid directive line");
 	break;
 
-    default:			/* It's a backend-specific directive */
-        switch (ofmt->directive(d, value, pass2)) {
-        case DIRR_UNKNOWN:
+    default:
+        if (d > D_ofmt && d < D_pragma_tokens) {
+            /* It's a backend-specific directive */
+            switch (ofmt->directive(d, value)) {
+            case DIRR_UNKNOWN:
+                goto unknown;
+            case DIRR_OK:
+            case DIRR_ERROR:
+                break;
+            case DIRR_BADPARAM:
+                bad_param = true;
+                break;
+            default:
+                panic();
+            }
+        } else if (d < D_pseudo_ops) {
+            nasm_nonfatal("internal error: unimplemented directive [%s]",
+                          directive);
+            break;
+        } else {
             goto unknown;
-        case DIRR_OK:
-        case DIRR_ERROR:
-            break;
-        case DIRR_BADPARAM:
-            bad_param = true;
-            break;
-        default:
-            panic();
         }
         break;
 
     case D_unknown:
     unknown:
-        nasm_error(pass0 < 2 ? ERR_NONFATAL : ERR_PANIC,
-                   "unrecognised directive [%s]", directive);
+        nasm_nonfatal("unrecognized directive [%s]", directive);
         break;
 
     case D_SEGMENT:         /* [SEGMENT n] */
     case D_SECTION:
     {
-	int sb = globalbits;
-        int32_t seg = ofmt->section(value, pass2, &sb);
+	int sb = globl.bits;
+        int32_t seg = ofmt->section(value, &sb);
 
         if (seg == NO_SEG) {
-            nasm_error(pass0 < 2 ? ERR_NONFATAL : ERR_PANIC,
-                       "segment name `%s' not recognized", value);
+            nasm_nonfatal("segment name `%s' not recognized", value);
         } else {
-            globalbits = sb;
+            globl.bits = sb;
             switch_segment(seg);
         }
         break;
@@ -263,26 +337,23 @@ bool process_directives(char *directive)
 	expr *e;
 
         if (*value) {
-            stdscan_reset();
-            stdscan_set(value);
+            stdscan_reset(value);
             tokval.t_type = TOKEN_INVALID;
-            e = evaluate(stdscan, NULL, &tokval, NULL, pass2, NULL);
+            e = evaluate(stdscan, NULL, &tokval, NULL, true, NULL);
             if (e) {
                 uint64_t align = e->value;
 
 		if (!is_power2(e->value)) {
-                    nasm_error(ERR_NONFATAL,
-                               "segment alignment `%s' is not power of two",
-                               value);
+                    nasm_nonfatal("segment alignment `%s' is not power of two",
+				  value);
 		} else if (align > UINT64_C(0x7fffffff)) {
                     /*
                      * FIXME: Please make some sane message here
                      * ofmt should have some 'check' method which
                      * would report segment alignment bounds.
                      */
-		    nasm_error(ERR_NONFATAL,
-			       "absurdly large segment alignment `%s' (2^%d)",
-			       value, ilog2_64(align));
+		    nasm_nonfatal("absurdly large segment alignment `%s' (2^%d)",
+				  value, ilog2_64(align));
                 }
 
                 /* callee should be able to handle all details */
@@ -294,7 +365,7 @@ bool process_directives(char *directive)
     }
 
     case D_BITS:            /* [BITS bits] */
-        globalbits = get_bits(value);
+        globl.bits = get_bits(value);
         break;
 
     case D_GLOBAL:          /* [GLOBAL|STATIC|EXTERN|COMMON symbol:special] */
@@ -306,35 +377,41 @@ bool process_directives(char *directive)
     case D_EXTERN:
         type = LBL_EXTERN;
         goto symdef;
+    case D_REQUIRED:
+        type = LBL_REQUIRED;
+        goto symdef;
     case D_COMMON:
         type = LBL_COMMON;
         goto symdef;
 
     symdef:
     {
-        bool validid = true;
+        bool validid;
         int64_t size = 0;
         char *sizestr;
         bool rn_error;
 
-        if (*value == '$')
-            value++;        /* skip initial $ if present */
+        if (*value == '$') {
+            value++;        /* skip escaping $ if present */
+            validid = nasm_isidchar(*value);
+            if (globl.dollarhex)
+                validid &= !nasm_isnumchar(*value);
+        } else {
+            validid = nasm_isidstart(*value);
+        }
 
         q = value;
-        if (!isidstart(*q)) {
-            validid = false;
-        } else {
+        if (validid) {
             q++;
             while (*q && *q != ':' && !nasm_isspace(*q)) {
-                if (!isidchar(*q))
+                if (!nasm_isidchar(*q))
                     validid = false;
                 q++;
             }
         }
         if (!validid) {
-            nasm_error(ERR_NONFATAL,
-                       "identifier expected after %s, got `%s'",
-                       directive, value);
+            nasm_nonfatal("identifier expected after %s, got `%s'",
+			  directive, value);
             break;
         }
 
@@ -357,46 +434,41 @@ bool process_directives(char *directive)
             if (sizestr)
                 size = readnum(sizestr, &rn_error);
             if (!sizestr || rn_error)
-                nasm_error(ERR_NONFATAL,
-                           "%s size specified in common declaration",
-                           sizestr ? "invalid" : "no");
+                nasm_nonfatal("%s size specified in common declaration",
+			      sizestr ? "invalid" : "no");
         } else if (sizestr) {
-            nasm_error(ERR_NONFATAL, "invalid syntax in %s declaration",
-                       directive);
+            nasm_nonfatal("invalid syntax in %s declaration", directive);
         }
 
         if (!declare_label(value, type, special))
             break;
-        
-        if (type == LBL_COMMON || type == LBL_EXTERN)
+
+        if (type == LBL_COMMON || type == LBL_EXTERN || type == LBL_REQUIRED)
             define_label(value, 0, size, false);
 
-    	break;
+	break;
     }
 
     case D_ABSOLUTE:        /* [ABSOLUTE address] */
     {
 	expr *e;
 
-        stdscan_reset();
-        stdscan_set(value);
+        stdscan_reset(value);
         tokval.t_type = TOKEN_INVALID;
-        e = evaluate(stdscan, NULL, &tokval, NULL, pass2, NULL);
+        e = evaluate(stdscan, NULL, &tokval, NULL, true, NULL);
         if (e) {
-            if (!is_reloc(e))
-                nasm_error(pass0 ==
-                           1 ? ERR_NONFATAL : ERR_PANIC,
-                           "cannot use non-relocatable expression as "
-                           "ABSOLUTE address");
-            else {
+            if (!is_reloc(e)) {
+                nasm_nonfatal("cannot use non-relocatable expression as "
+                              "ABSOLUTE address");
+            } else {
                 absolute.segment = reloc_seg(e);
                 absolute.offset = reloc_value(e);
             }
-        } else if (passn == 1)
+        } else if (pass_first()) {
             absolute.offset = 0x100;     /* don't go near zero in case of / */
-        else
-            nasm_panic("invalid ABSOLUTE address "
-                       "in pass two");
+        } else {
+            nasm_nonfatal("invalid ABSOLUTE address");
+        }
         in_absolute = true;
         location.segment = NO_SEG;
         location.offset = absolute.offset;
@@ -411,45 +483,55 @@ bool process_directives(char *directive)
         p = value;
         q = debugid;
         badid = overlong = false;
-        if (!isidstart(*p)) {
-            badid = true;
+        if (*p == '$') {
+            /* Skip $ used to escape an identifier */
+            p++;
+            badid = !nasm_isidchar(*p);
+            if (globl.dollarhex)
+                badid |= nasm_isnumchar(*p);
         } else {
+            badid = !nasm_isidstart(*p);
+        }
+
+        if (!badid) {
             while (*p && !nasm_isspace(*p)) {
                 if (q >= debugid + sizeof debugid - 1) {
                     overlong = true;
                     break;
                 }
-                if (!isidchar(*p))
+                if (!nasm_isidchar(*p))
                     badid = true;
                 *q++ = *p++;
             }
             *q = 0;
         }
         if (badid) {
-            nasm_error(passn == 1 ? ERR_NONFATAL : ERR_PANIC,
-                       "identifier expected after DEBUG");
+            nasm_nonfatal("identifier expected after DEBUG");
             break;
         }
         if (overlong) {
-            nasm_error(passn == 1 ? ERR_NONFATAL : ERR_PANIC,
-                       "DEBUG identifier too long");
+            nasm_nonfatal("DEBUG identifier too long");
             break;
         }
         p = nasm_skip_spaces(p);
-        if (pass0 == 2)
+        if (pass_final())
             dfmt->debug_directive(debugid, p);
         break;
     }
 
-    case D_WARNING:         /* [WARNING {+|-|*}warn-name] */
-        if (!set_warning_status(value)) {
-            nasm_error(ERR_WARNING|ERR_WARN_UNK_WARNING,
-                       "unknown warning option: %s", value);
+    case D_WARNING:         /* [WARNING {push|pop|{+|-|*}warn-name}] */
+        value = nasm_skip_spaces(value);
+        if ((*value | 0x20) == 'p') {
+            if (!nasm_stricmp(value, "push"))
+                push_warnings();
+            else if (!nasm_stricmp(value, "pop"))
+                pop_warnings();
         }
+        set_warning_status(value);
         break;
 
     case D_CPU:         /* [CPU] */
-        cpu = get_cpu(value);
+        set_cpu(value);
         break;
 
     case D_LIST:        /* [LIST {+|-}] */
@@ -458,7 +540,7 @@ bool process_directives(char *directive)
             user_nolist = false;
         } else {
             if (*value == '-') {
-                user_nolist = true;
+                user_nolist = !list_option('F');
             } else {
                 bad_param = true;
             }
@@ -466,50 +548,103 @@ bool process_directives(char *directive)
         break;
 
     case D_DEFAULT:         /* [DEFAULT] */
-        stdscan_reset();
-        stdscan_set(value);
+    {
+        enum ea_flags relabs_applies = EAF_NOTFSGS;
+        bool eat_colon = false;
+
+        stdscan_reset(value);
         tokval.t_type = TOKEN_INVALID;
-        if (stdscan(NULL, &tokval) != TOKEN_INVALID) {
-            switch (tokval.t_integer) {
-            case S_REL:
-                globalrel = 1;
+        while (!bad_param) {
+            enum token_type type = stdscan(NULL, &tokval);
+            if (type <= 0)
                 break;
-            case S_ABS:
-                globalrel = 0;
+
+            switch (tokval.t_type) {
+            case TOKEN_REG:
+            case TOKEN_SPECIAL:
+            case TOKEN_PREFIX:
+                switch (tokval.t_integer) {
+                case R_FS:
+                    relabs_applies = EAF_FS;
+                    eat_colon = true;
+                    goto next_token;
+                case R_GS:
+                    relabs_applies = EAF_GS;
+                    eat_colon = true;
+                    goto next_token;
+                case S_REL:
+                    globl.rel    |= relabs_applies;
+                    globl.reldef |= relabs_applies;
+                    break;
+                case S_ABS:
+                    globl.rel    &= ~relabs_applies;
+                    globl.reldef |= relabs_applies;
+                    break;
+                case P_BND:
+                    globl.bnd = 1;
+                    break;
+                case P_NOBND:
+                    globl.bnd = 0;
+                    break;
+                default:
+                    bad_param = true;
+                    break;
+                }
                 break;
-            case P_BND:
-                globalbnd = 1;
+
+            case ',':
                 break;
-            case P_NOBND:
-                globalbnd = 0;
-                break;
+
+            case ':':
+                if (eat_colon) {
+                    eat_colon = false;
+                    goto next_token;
+                }
+            /* else fall through */
             default:
                 bad_param = true;
                 break;
             }
-        } else {
-            bad_param = true;
+
+            eat_colon = false;
+            relabs_applies = EAF_NOTFSGS;
+        next_token:
+            ;
         }
         break;
+    }
 
     case D_FLOAT:
         if (float_option(value)) {
-            nasm_error(pass0 < 2 ? ERR_NONFATAL : ERR_PANIC,
-                       "unknown 'float' directive: %s", value);
+            nasm_nonfatal("unknown 'float' directive: %s", value);
         }
+        break;
+
+    case D_DOLLARHEX:
+        get_boolean_option(value, &globl.dollarhex);
         break;
 
     case D_PRAGMA:
         process_pragma(value);
         break;
-    }
 
+    case D_PREFIX:
+    case D_GPREFIX:
+    case D_SUFFIX:
+    case D_GSUFFIX:
+    case D_POSTFIX:
+    case D_GPOSTFIX:
+    case D_LPREFIX:
+    case D_LSUFFIX:
+    case D_LPOSTFIX:
+        set_label_mangle(d, value);
+        break;
+    }
 
     /* A common error message */
     if (bad_param) {
-        nasm_error(ERR_NONFATAL, "invalid parameter to [%s] directive",
-                   directive);
+        nasm_nonfatal("invalid parameter to [%s] directive", directive);
     }
 
-    return d != D_none;
+    return true;
 }

@@ -1,47 +1,14 @@
-/* ----------------------------------------------------------------------- *
- *   
- *   Copyright 1996-2017 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *     
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2025 The NASM Authors - All Rights Reserved */
 
-/* 
+/*
  * outas86.c	output routines for the Netwide Assembler to produce
  *		Linux as86 (bin86-0.3) object files
  */
 
 #include "compiler.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
+#include "nctype.h"
 
 #include "nasm.h"
 #include "nasmlib.h"
@@ -159,11 +126,8 @@ static void as86_cleanup(void)
     saa_free(strs);
 }
 
-static int32_t as86_section_names(char *name, int pass, int *bits)
+static int32_t as86_section_names(char *name, int *bits)
 {
-
-    (void)pass;
-
     /*
      * Default is 16 bits.
      */
@@ -200,13 +164,13 @@ static void as86_deflabel(char *name, int32_t segment, int64_t offset,
     struct Symbol *sym;
 
     if (special)
-        nasm_error(ERR_NONFATAL, "as86 format does not support any"
-              " special symbol types");
+        nasm_nonfatal("as86 format does not support any"
+                      " special symbol types");
 
 
     if (name[0] == '.' && name[1] == '.' && name[2] != '@') {
 	if (strcmp(name, "..start")) {
-	    nasm_error(ERR_NONFATAL, "unrecognised special symbol `%s'", name);
+	    nasm_nonfatal("unrecognised special symbol `%s'", name);
 	    return;
 	} else {
 	    is_start = true;
@@ -284,17 +248,16 @@ static void as86_add_piece(struct Section *sect, int type, int32_t offset,
         p->number = raa_read(bsym, segment), p->type = 2;
 }
 
-static void as86_out(int32_t segto, const void *data,
-		     enum out_type type, uint64_t size,
-                     int32_t segment, int32_t wrt)
+static void as86_out(const struct out_data *out)
 {
+    OUT_LEGACY(out,segto,data,type,size,segment,wrt);
     struct Section *s;
     int32_t offset;
     uint8_t mydata[4], *p;
 
     if (wrt != NO_SEG) {
         wrt = NO_SEG;           /* continue to do _something_ */
-        nasm_error(ERR_NONFATAL, "WRT not supported by as86 output format");
+        nasm_nonfatal("WRT not supported by as86 output format");
     }
 
     if (segto == stext.index)
@@ -304,14 +267,14 @@ static void as86_out(int32_t segto, const void *data,
     else if (segto == bssindex)
         s = NULL;
     else {
-        nasm_error(ERR_WARNING, "attempt to assemble code in"
-              " segment %d: defaulting to `.text'", segto);
+        nasm_warn(WARN_OTHER, "attempt to assemble code in"
+                  " unknown section: defaulting to `.text'");
         s = &stext;
     }
 
     if (!s && type != OUT_RESERVE) {
-        nasm_error(ERR_WARNING, "attempt to initialize memory in the"
-              " BSS section: ignored");
+        nasm_warn(WARN_OTHER, "attempt to initialize memory in the"
+                  " BSS section: ignored");
 	bsslen += realsize(type, size);
         return;
     }
@@ -320,9 +283,9 @@ static void as86_out(int32_t segto, const void *data,
 
     if (type == OUT_RESERVE) {
         if (s) {
-            nasm_error(ERR_WARNING, "uninitialized space declared in"
-                  " %s section: zeroing",
-                  (segto == stext.index ? "code" : "data"));
+            nasm_warn(WARN_ZEROING, "uninitialized space declared in"
+                      " %s section: zeroing",
+                      (segto == stext.index ? "code" : "data"));
             as86_sect_write(s, NULL, size);
             as86_add_piece(s, 0, 0L, 0L, size, 0);
         } else
@@ -334,8 +297,8 @@ static void as86_out(int32_t segto, const void *data,
         int asize = abs((int)size);
         if (segment != NO_SEG) {
             if (segment % 2) {
-                nasm_error(ERR_NONFATAL, "as86 format does not support"
-                      " segment base references");
+                nasm_nonfatal("as86 format does not support"
+                              " segment base references");
             } else {
                 offset = *(int64_t *)data;
                 as86_add_piece(s, 1, offset, segment, asize, 0);
@@ -349,8 +312,8 @@ static void as86_out(int32_t segto, const void *data,
     } else if (type == OUT_REL2ADR) {
         if (segment != NO_SEG) {
             if (segment % 2) {
-                nasm_error(ERR_NONFATAL, "as86 format does not support"
-                      " segment base references");
+                nasm_nonfatal("as86 format does not support"
+                              " segment base references");
             } else {
                 offset = *(int64_t *)data;
                 as86_add_piece(s, 1, offset - size + 2, segment, 2L,
@@ -360,8 +323,8 @@ static void as86_out(int32_t segto, const void *data,
     } else if (type == OUT_REL4ADR) {
         if (segment != NO_SEG) {
             if (segment % 2) {
-                nasm_error(ERR_NONFATAL, "as86 format does not support"
-                      " segment base references");
+                nasm_nonfatal("as86 format does not support"
+                              " segment base references");
             } else {
                 offset = *(int64_t *)data;
                 as86_add_piece(s, 1, offset - size + 4, segment, 4L,
@@ -592,7 +555,7 @@ static void as86_sect_write(struct Section *sect,
 extern macros_t as86_stdmac[];
 
 const struct ofmt of_as86 = {
-    "Linux as86 (bin86 version 0.3) object files",
+    "as86 (bin86/dev86 toolchain)",
     "as86",
     ".o",
     0,
@@ -602,7 +565,6 @@ const struct ofmt of_as86 = {
     as86_stdmac,
     as86_init,
     null_reset,
-    nasm_do_legacy_output,
     as86_out,
     as86_deflabel,
     as86_section_names,
