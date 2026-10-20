@@ -1,12 +1,6 @@
 ;Testname=test; Arguments=-fbin -ocrc32.bin; Files=stdout stderr crc32.bin
 
-%ifndef BITS
- %define BITS 64
-%endif
-
-	bits BITS
-
-%if __?BITS?__ == 16
+	bits 16
 
 	crc32 eax,cl
 	crc32 eax,byte [di]
@@ -15,7 +9,8 @@
 	crc32 eax,ecx
 	crc32 eax,dword [di]
 
-%elif __?BITS?__ == 32
+	bits 32
+	align 16
 
 	crc32 eax,cl
 	crc32 eax,byte [edi]
@@ -24,7 +19,9 @@
 	crc32 eax,ecx
 	crc32 eax,dword [edi]
 
-%else
+	bits 64
+	align 16
+
 	crc32 eax,cl
 	crc32 eax,byte [rdi]
 	crc32 eax,r9b
@@ -38,4 +35,3 @@
 	crc32 rax,rcx
 	crc32 rax,qword [rdi]
 	crc32 rax,r9
-%endif

@@ -1,18 +1,40 @@
 #!/usr/bin/perl
-# SPDX-License-Identifier: BSD-2-Clause
-# Copyright 1996-2025 The NASM Authors - All Rights Reserved
+## --------------------------------------------------------------------------
+##   
+##   Copyright 1996-2009 The NASM Authors - All Rights Reserved
+##   See the file AUTHORS included with the NASM distribution for
+##   the specific copyright holders.
+##
+##   Redistribution and use in source and binary forms, with or without
+##   modification, are permitted provided that the following
+##   conditions are met:
+##
+##   * Redistributions of source code must retain the above copyright
+##     notice, this list of conditions and the following disclaimer.
+##   * Redistributions in binary form must reproduce the above
+##     copyright notice, this list of conditions and the following
+##     disclaimer in the documentation and/or other materials provided
+##     with the distribution.
+##     
+##     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+##     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+##     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+##     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+##     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+##     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+##     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+##     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+##     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+##     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+##     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+##     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+##     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+##
+## --------------------------------------------------------------------------
 
 #
 # Read regs.dat and output regs.h and regs.c (included in names.c)
 #
-
-use integer;
-
-# For simplicity make all the disassembly tables the same size
-# This must be power of 2!
-my $distablesz = 32;
-
-die if ($distablesz & ($distablesz-1)); # Not a power of 2?
 
 $nline = 0;
 
@@ -24,15 +46,15 @@ sub toint($) {
 
 sub process_line($) {
     my($line) = @_;
+    my @v;
 
-    if ( $line !~ /^\s*(\S+)\s*(\S+)\s*(\S+)\s*([0-9]+)\s*(?:\&\s*(0x[0-9a-f]+|[0-9]+))?/i ) {
+    if ( $line !~ /^\s*(\S+)\s*(\S+)\s*(\S+)\s*([0-9]+)\s*(\S*)/i ) {
 	die "regs.dat:$nline: invalid input\n";
     }
     $reg      = $1;
     $aclass   = $2;
     $dclasses = $3;
     $x86regno = toint($4);
-    $regmask  = toint($5);
 
     if ($reg =~ /^(.*[^0-9])([0-9]+)\-([0-9]+)(|[^0-9].*)$/) {
 	$nregs = $3-$2+1;
@@ -42,31 +64,18 @@ sub process_line($) {
 	$reg_suffix = $4;
     } else {
 	$nregs = 1;
-	undef $reg_prefix;
-	undef $reg_suffix;
-    }
-
-    foreach $dclass (split(/,/, $dclasses)) {
-	if ( !defined($disclass{$dclass}) ) {
-	    $disclass{$dclass} = [];
-	}
-	if ($regmask) {
-	    if ($regmasks{$dclass} && $regmasks{$dclass} != $regmask) {
-		die "regs.dat:$nline: inconsistent regmasks for disassembly class $dclass\n";
-	    }
-	    $regmasks{$dclass} = $regmask;
-	}
+	undef $reg_prefix, $reg_suffix;
     }
 
     while ($nregs--) {
 	$regs{$reg} = $aclass;
 	$regvals{$reg} = $x86regno;
 
-	if ($x86regno >= $distablesz) {
-	    die "regs.dat:$nline: register number $x86regno too large, increase distablesz in regs.pl\n";
-	}
-
 	foreach $dclass (split(/,/, $dclasses)) {
+	    if ( !defined($disclass{$dclass}) ) {
+		$disclass{$dclass} = [];
+	    }
+
 	    $disclass{$dclass}->[$x86regno] = $reg;
 	}
 
@@ -87,7 +96,6 @@ sub process_line($) {
 %regs = ();
 %regvals = ();
 %disclass = ();
-%regmasks = ();
 open(REGS, '<', $file) or die "$0: Cannot open $file\n";
 while ( defined($line = <REGS>) ) {
     $nline++;
@@ -147,8 +155,8 @@ if ( $fmt eq 'h' ) {
     printf "    0,\n";		# Dummy entry for 0
     foreach $reg ( sort(keys(%regs)) ) {
 	# Print the class of the register
-	printf "    /* %-5s */    RN_FLAGS(%2d) | %s,\n",
-	    $reg, $regvals{$reg}, $regs{$reg};
+	printf "    %-15s /* %-5s */\n",
+		$regs{$reg}.',', $reg;
     }
     print "};\n";
 } elsif ( $fmt eq 'vc' ) {
@@ -167,17 +175,18 @@ if ( $fmt eq 'h' ) {
     print "/* automatically generated from $file - do not edit */\n\n";
     print "#include \"regdis.h\"\n\n";
     foreach $class ( sort(keys(%disclass)) ) {
-	die if (scalar @{$disclass{$class}} > $distablesz);
-	$regmask = $regmasks{$class} || ($distablesz - 1);
-	printf "const enum reg_enum nasm_rd_%s[DISREGTBLSZ] = {",
-	    $class;
-	for ($i = 0; $i < $distablesz; $i++) {
-	    my $r = $disclass{$class}->[$i & $regmask];
-	    print "\n   " if (!($i & 7));
-	    print ' ', defined($r) ? "R_\U$r" : '0';
-	    print ',' unless ($i == $distablesz - 1);
+	printf "const enum reg_enum nasm_rd_%-8s[%2d] = {",
+		$class, scalar @{$disclass{$class}};
+	@foo = @{$disclass{$class}};
+	@bar = ();
+	for ( $i = 0 ; $i < scalar(@foo) ; $i++ ) {
+            if (defined($foo[$i])) {
+		push(@bar, "R_\U$foo[$i]\E");
+	    } else {
+		die "$0: No register name for class $class, value $i\n";
+            }
 	}
-	print "\n};\n";
+	print join(',', @bar), "};\n";
     }
 } elsif ( $fmt eq 'dh' ) {
     # Output regdis.h
@@ -185,10 +194,9 @@ if ( $fmt eq 'h' ) {
     print "#ifndef NASM_REGDIS_H\n";
     print "#define NASM_REGDIS_H\n\n";
     print "#include \"regs.h\"\n\n";
-    printf "#define DISREGTBLSZ %d\n\n", $distablesz;
     foreach $class ( sort(keys(%disclass)) ) {
-	printf "extern const enum reg_enum nasm_rd_%s[DISREGTBLSZ];\n",
-	    $class;
+	printf "extern const enum reg_enum nasm_rd_%-8s[%2d];\n",
+		$class, scalar @{$disclass{$class}};
     }
     print "\n#endif /* NASM_REGDIS_H */\n";
 } else {

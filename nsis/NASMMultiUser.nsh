@@ -192,11 +192,11 @@ Installer/uninstaller initialization
 !macro MULTIUSER_INIT_TEXTS
 
   !ifndef MULTIUSER_INIT_TEXT_ADMINREQUIRED
-    !define MULTIUSER_INIT_TEXT_ADMINREQUIRED "$(^Caption) requires Administrator privileges."
+    !define MULTIUSER_INIT_TEXT_ADMINREQUIRED "$(^Caption) requires Administrator priviledges."
   !endif
 
   !ifndef MULTIUSER_INIT_TEXT_POWERREQUIRED
-    !define MULTIUSER_INIT_TEXT_POWERREQUIRED "$(^Caption) requires at least Power User privileges."
+    !define MULTIUSER_INIT_TEXT_POWERREQUIRED "$(^Caption) requires at least Power User priviledges."
   !endif
 
   !ifndef MULTIUSER_INIT_TEXT_ALLUSERSNOTPOSSIBLE

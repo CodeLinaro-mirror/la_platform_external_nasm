@@ -16,6 +16,7 @@
  */
 
 #include "md5.h"
+#include <string.h>             /* for memcpy() */
 
 #ifdef WORDS_LITTLEENDIAN
 #define byteReverse(buf, len)	/* Nothing */

@@ -18,7 +18,7 @@ while ($ARGV[0] =~ /^-(.*)$/) {
     my $opt = $1;
     shift @ARGV;
 
-    if ($opt eq 'nocompress') {
+    if ($opt eq '-nocompress') {
         $compress = 0;
     }
 }
@@ -26,10 +26,10 @@ while ($ARGV[0] =~ /^-(.*)$/) {
 # Ghostscript executable name.  "gs" on Unix-based systems.
 my $gs = 'gs';
 
-my ($in, $out, $fontpath) = @ARGV;
+my ($in, $out) = @ARGV;
 
 if (!defined($out)) {
-    die "Usage: $0 [-nocompress] infile outfile [fontpath]\n";
+    die "Usage: $0 [-nocompress] infile ou{ tfile\n";
 }
 
 # If Win32, help GhostScript out with some defaults
@@ -96,35 +96,17 @@ exit 0 if ( !$r && -f $out );
 # 2. ps2pdf (from Ghostscript)
 #
 # GhostScript uses # rather than = to separate options and values on Windows,
-# it seems.  Similarly it uses ; in path lists rather than :.
-# Call gs directly rather than ps2pdf, because -dSAFER
+# it seems.  Call gs directly rather than ps2pdf, because -dSAFER
 # breaks font discovery on some systems, apparently.
 win32_gs_help();
 my $o = $win32_ok ? '#' : '=';
-my $p = $win32_ok ? ';' : ':';
-my $fpopt;
-if (defined($fontpath)) {
-    my @fplist = ();
-    open(my $fp, '<', $fontpath) or die "$0: $fontpath: $!\n";
-    while (my $fpe = <$fp>) {
-	chomp $fpe;
-	push(@fplist, $fpe);
-    }
-    close($fp);
-    $fpopt = "-sFONTPATH${o}" . join($p, @fplist);
-}
-
-my $r = system($gs, "-dCompatibilityLevel${o}1.3",
-	       "-I".File::Spec->curdir(),
+my $r = system($gs, "-dCompatibilityLevel${o}1.4", "-q",
 	       "-P-", "-dNOPAUSE", "-dBATCH", "-sDEVICE${o}pdfwrite",
 	       "-sstdout${o}%stderr", "-sOutputFile${o}${out}",
-	       "-dOptimize${o}true",
-	       "-dEmbedAllFonts${o}true", "-dSubsetFonts${o}true",
-	       "-dMaxSubsetPct${o}100",
-	       $fpopt,
+	       "-dOptimize${o}true", "-dEmbedAllFonts${o}true",
                "-dCompressPages${o}" . ($compress ? 'true' : 'false'),
                "-dUseFlateCompression${o}true",
-	       "-f", $in);
+	       "-c", ".setpdfwrite", "-f", $in);
 exit 0 if ( !$r && -f $out );
 
 # 3. pstopdf (BSD/MacOS X utility)

@@ -1,9 +1,11 @@
+;Testname=br3041451; Arguments=-Ox -fbin -obr3041451.bin; Files=stdout stderr br3041451.bin
+
 	[bits 64]
 
 	;
 	; HIT: Maximum possible value
 	%assign i 0
-	%rep 1000000
+	%rep ((1<<62)-1)
 		mov rax, i
 		%assign i i+1
 		%if i == 2
@@ -31,7 +33,7 @@
 		%if i == 2
 			%exitrep
 		%endif
-	%endrep
+	%endrep 
 
 	;
 	; MISS: It's negative
@@ -54,3 +56,4 @@
 			%exitrep
 		%endif
 	%endrep
+

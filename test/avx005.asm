@@ -1,3 +1,5 @@
+;Testname=avx005; Arguments=-fbin -oavx005.bin -Ox; Files=stdout stderr avx005.bin
+
 %define regxmm xmm0
 %define regymm ymm0
 %define mem [0]
