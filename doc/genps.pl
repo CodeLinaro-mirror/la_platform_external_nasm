@@ -1,36 +1,6 @@
 #!/usr/bin/perl
-## --------------------------------------------------------------------------
-##
-##   Copyright 1996-2017 The NASM Authors - All Rights Reserved
-##   See the file AUTHORS included with the NASM distribution for
-##   the specific copyright holders.
-##
-##   Redistribution and use in source and binary forms, with or without
-##   modification, are permitted provided that the following
-##   conditions are met:
-##
-##   * Redistributions of source code must retain the above copyright
-##     notice, this list of conditions and the following disclaimer.
-##   * Redistributions in binary form must reproduce the above
-##     copyright notice, this list of conditions and the following
-##     disclaimer in the documentation and/or other materials provided
-##     with the distribution.
-##
-##     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
-##     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-##     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-##     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-##     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
-##     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-##     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
-##     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-##     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
-##     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-##     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-##     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
-##     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-##
-## --------------------------------------------------------------------------
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright 1996-2020 The NASM Authors - All Rights Reserved
 
 #
 # Format the documentation as PostScript
@@ -41,6 +11,12 @@ use File::Spec;
 require 'psfonts.ph';		# The fonts we want to use
 require 'pswidth.ph';		# PostScript string width
 require 'findfont.ph';		# Find fonts in the system
+
+sub basename($) {
+    my($path) = @_;
+    my($vol,$dir,$file) = File::Spec->splitpath($path);
+    return $file;
+}
 
 #
 # Document formatting parameters
@@ -99,7 +75,7 @@ $epsdir   = File::Spec->curdir();
 #
 # Parse the command line
 #
-undef $input;
+undef $input, $fontpath, $fontmap;
 while ( $arg = shift(@ARGV) ) {
     if ( $arg =~ /^\-(|no\-)(.*)$/ ) {
 	$parm = $2;
@@ -119,12 +95,35 @@ while ( $arg = shift(@ARGV) ) {
 	    $epsdir = shift(@ARGV);
 	} elsif ( $true && $parm eq 'headps' ) {
 	    $headps = shift(@ARGV);
+	} elsif ( $true && $parm eq 'fontpath' ) {
+	    $fontpath = shift(@ARGV);
+	} elsif ( $true && $parm eq 'fontmap' ) {
+	    $fontmap = shift(@ARGV);
 	} else {
 	    die "$0: Unknown option: $arg\n";
 	}
     } else {
 	$input = $arg;
     }
+}
+
+# Generate a PostScript string
+sub ps_string($) {
+    my ($s) = @_;
+    my ($i,$c);
+    my ($o) = '(';
+    my ($l) = length($s);
+    for ( $i = 0 ; $i < $l ; $i++ ) {
+	$c = substr($s,$i,1);
+	if ( ord($c) < 32 || ord($c) > 126 ) {
+	    $o .= sprintf("\\%03o", ord($c));
+	} elsif ( $c eq '(' || $c eq ')' || $c eq "\\" ) {
+	    $o .= "\\".$c;
+	} else {
+	    $o .= $c;
+	}
+    }
+    return $o.')';
 }
 
 # Configure post-paragraph skips for each kind of paragraph
@@ -166,6 +165,39 @@ foreach my $fset ( @AllFonts ) {
     }
 }
 
+# Create a font path. At least some versions of Ghostscript
+# don't seem to get it right any other way.
+if (defined($fontpath)) {
+    my %fontdirs = ();
+    foreach my $fname (sort keys(%ps_all_fonts)) {
+	my $fdata = $ps_all_fonts{$fname};
+	if (defined($fdata->{filename})) {
+	    my($vol,$dir,$basename) =
+		File::Spec->splitpath(File::Spec->rel2abs($fdata->{filename}));
+	    $dir = File::Spec->catpath($vol, $dir, '');
+	    $fontdirs{$dir}++;
+	}
+    }
+    open(my $fp, '>', $fontpath) or die "$0: $fontpath: $!\n";
+    foreach $d (sort(keys(%fontdirs))) {
+	print $fp $d, "\n";
+    }
+    close($fp);
+}
+
+# Create a Fontmap. At least some versions of Ghostscript
+# don't seem to get it right any other way.
+if (defined($fontmap)) {
+    open(my $fm, '>', $fontmap) or die "$0: $fontmap: $!\n";
+    foreach my $fname (sort keys(%ps_all_fonts)) {
+	my $fdata = $ps_all_fonts{$fname};
+	if (defined($fdata->{filename})) {
+	    print $fm '/', $fname, ' ', ps_string($fdata->{filename}), " ;\n";
+	}
+    }
+    close($fp);
+}
+
 # Custom encoding vector.  This is basically the same as
 # ISOLatin1Encoding (a level 2 feature, so we dont want to use it),
 # but with the "naked" accents at \200-\237 moved to the \000-\037
@@ -181,7 +213,7 @@ foreach my $fset ( @AllFonts ) {
  'dieresis', undef, 'ring', 'cedilla', undef, 'hungarumlaut',
  'ogonek', 'caron', 'space', 'exclam', 'quotedbl', 'numbersign',
  'dollar', 'percent', 'ampersand', 'quoteright', 'parenleft',
- 'parenright', 'asterisk', 'plus', 'comma', 'minus', 'period',
+ 'parenright', 'asterisk', 'plus', 'comma', 'hyphen', 'period',
  'slash', 'zero', 'one', 'two', 'three', 'four', 'five', 'six',
  'seven', 'eight', 'nine', 'colon', 'semicolon', 'less', 'equal',
  'greater', 'question', 'at', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
@@ -198,7 +230,7 @@ foreach my $fset ( @AllFonts ) {
  'scaron', 'guilsignlright', 'oe', undef, 'zcaron', 'Ydieresis',
  'space', 'exclamdown', 'cent', 'sterling', 'currency', 'yen',
  'brokenbar', 'section', 'dieresis', 'copyright', 'ordfeminine',
- 'guillemotleft', 'logicalnot', 'hyphen', 'registered', 'macron',
+ 'guillemotleft', 'logicalnot', 'minus', 'registered', 'macron',
  'degree', 'plusminus', 'twosuperior', 'threesuperior', 'acute', 'mu',
  'paragraph', 'periodcentered', 'cedilla', 'onesuperior',
  'ordmasculine', 'guillemotright', 'onequarter', 'onehalf',
@@ -302,7 +334,7 @@ sub string2array($)
 }
 
 #
-# Take a crossreference name and generate the PostScript name for it.
+# Take a cross-reference name and generate the PostScript name for it.
 #
 # This hack produces a somewhat smaller PDF...
 #%ps_xref_list = ();
@@ -361,7 +393,7 @@ sub ps_flow_lines($$$@) {
 		$pastmarker = 1;
 	    }
 	    if ( $$e[0] == -1 || $$e[0] == -6 ) {
-		# -1 (end anchor) or -6 (marker) goes with the preceeding
+		# -1 (end anchor) or -6 (marker) goes with the preceding
 		# text, otherwise with the subsequent text
 		push(@l, $e);
 	    } else {
@@ -687,7 +719,7 @@ $npara = scalar(@paras);
 @pslines    = ();
 
 #
-# Line Auxilliary Information Types
+# Line Auxiliary Information Types
 #
 $AuxStr	    = 1;		# String
 $AuxPage    = 2;		# Page number (from xref)
@@ -719,7 +751,7 @@ sub ps_break_lines($$) {
 	    my $p;
 	    # Code paragraph; each chunk is a line
 	    foreach $p ( @data ) {
-		push(@ls, [[$ptype,0,undef,\%BodyFont,0,0],[$p]]);
+		push(@ls, [[$ptype,0,undef,\%CodeFont,0,0],[$p]]);
 	    }
 	    $ls[0]->[0]->[1] |= 1;	     # First in para
 	    $ls[-1]->[0]->[1] |= 2;      # Last in para
@@ -734,7 +766,7 @@ sub ps_break_lines($$) {
 	    my $sech = $2;
 	    my $font = ($ptype eq 'head') ? \%HeadFont : \%SubhFont;
 	    @ls = ps_flow_lines($linewidth, $font, $ptype, @data);
-	    # We need the heading number as auxillary data
+	    # We need the heading number as auxilary data
 	    $ls[0]->[0]->[2] = [[$AuxStr,$secn]];
 	} elsif ( $ptype eq 'norm' ) {
 	    @ls = ps_flow_lines($linewidth, \%BodyFont, $ptype, @data);
@@ -757,7 +789,7 @@ sub ps_break_lines($$) {
 				$psconf{tocpnz}-$refwidth,
 				\%BodyFont, $ptype, @data);
 
-	    # Auxilliary data: for the first line, the cross reference symbol
+	    # Auxiliary data: for the first line, the cross reference symbol
 	    # and the reference name; for all lines but the first, the
 	    # reference width; and for the last line, the page number
 	    # as a string.
@@ -813,7 +845,8 @@ sub ps_break_pages($$) {
     # Paragraph types which are heading (meaning they should not be broken
     # immediately after)
     my $nobreakafter = "^(chap|appn|head|subh)\$";
-    # Paragraph types which should never be broken *before*
+    # Paragraph types which should never be broken *before*, unless
+    # the previous paragraph has the same type
     my $nobreakbefore = "^idx[1-9]\$";
     # Paragraph types which are set in columnar format
     my $columnregexp = "^idx.\$";
@@ -862,15 +895,17 @@ sub ps_break_pages($$) {
 		    # This would be an orphan, don't break.
 		} elsif ( $$linfo[1] & 1 ) {
 		    # Sole line or start of paragraph.  Break unless
-		    # the previous line was part of a heading.
-		    $broken = 1 if ( $$pinfo[0] !~ /$nobreakafter/o &&
-				     $$linfo[0] !~ /$nobreakbefore/o );
+		    # the previous line was part of a heading or a comma
+		    # index entry.
+		    $broken = $$pinfo[0] !~ /$nobreakafter/o &&
+			($$linfo[0] !~ /$nobreakbefore/o ||
+			 $$linfo[0] eq $$pinfo[0]);
 		} else {
 		    # Middle of paragraph.  Break unless we're in a
 		    # no-break paragraph, or the previous line would
 		    # end up being a widow.
-		    $broken = 1 if ( $$linfo[0] !~ /$nobreakregexp/o &&
-				     $$pinfo[1] != 1 );
+		    $broken = $$linfo[0] !~ /$nobreakregexp/o &&
+			$$pinfo[1] != 1;
 		}
 		$i--;
 	    }
@@ -1010,7 +1045,7 @@ $need_fonts_str = join(' ', @need_fonts_lst);
 print "%!PS-Adobe-3.0\n";
 print "%%Pages: $curpage\n";
 print "%%BoundingBox: 0 0 ", $psconf{pagewidth}, ' ', $psconf{pageheight}, "\n";
-print "%%Creator: (NASM psflow.pl)\n";
+print "%%Creator: ", basename($0), "\n";
 print "%%DocumentData: Clean7Bit\n";
 print "%%DocumentFonts: $all_fonts_str\n";
 print "%%DocumentNeededFonts: $need_fonts_str\n";
@@ -1090,25 +1125,6 @@ while ( defined($line = <PSHEAD>) ) {
 }
 close(PSHEAD);
 print "%%EndProlog\n";
-
-# Generate a PostScript string
-sub ps_string($) {
-    my ($s) = @_;
-    my ($i,$c);
-    my ($o) = '(';
-    my ($l) = length($s);
-    for ( $i = 0 ; $i < $l ; $i++ ) {
-	$c = substr($s,$i,1);
-	if ( ord($c) < 32 || ord($c) > 126 ) {
-	    $o .= sprintf("\\%03o", ord($c));
-	} elsif ( $c eq '(' || $c eq ')' || $c eq "\\" ) {
-	    $o .= "\\".$c;
-	} else {
-	    $o .= $c;
-	}
-    }
-    return $o.')';
-}
 
 # Generate PDF bookmarks
 print "%%BeginSetup\n";
@@ -1281,7 +1297,7 @@ foreach $line ( @pslines ) {
 	    } elsif ( $$x[0] == $AuxNum ) {
 		print $$x[1],' ';
 	    } else {
-		die "Unknown auxilliary data type";
+		die "Unknown auxiliary data type";
 	    }
 	}
     }

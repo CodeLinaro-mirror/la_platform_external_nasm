@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *   
- *   Copyright 1996-2017 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *     
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2017 The NASM Authors - All Rights Reserved */
 
 #include "compiler.h"
 #include "nasmlib.h"
@@ -262,9 +232,12 @@ void saa_fread(struct SAA *s, size_t posn, void *data, size_t len)
 void saa_fwrite(struct SAA *s, size_t posn, const void *data, size_t len)
 {
     size_t ix;
+    size_t padding = 0;
 
-    /* Seek beyond the end of the existing array not supported */
-    nasm_assert(posn <= s->datalen);
+    if (posn > s->datalen) {
+        padding = posn - s->datalen;
+        posn = s->datalen;
+    }
 
     if (likely(s->blk_len == SAA_BLKLEN)) {
         ix = posn >> SAA_BLKSHIFT;
@@ -280,6 +253,9 @@ void saa_fwrite(struct SAA *s, size_t posn, const void *data, size_t len)
         s->wpos = s->blk_len;
         s->wblk--;
     }
+
+    if (padding)
+        saa_wbytes(s, NULL, padding);
 
     saa_wbytes(s, data, len);
 }
@@ -301,25 +277,25 @@ void saa_write8(struct SAA *s, uint8_t v)
 
 void saa_write16(struct SAA *s, uint16_t v)
 {
-    v = cpu_to_le16(v);
+    v = htole16(v);
     saa_wbytes(s, &v, 2);
 }
 
 void saa_write32(struct SAA *s, uint32_t v)
 {
-    v = cpu_to_le32(v);
+    v = htole32(v);
     saa_wbytes(s, &v, 4);
 }
 
 void saa_write64(struct SAA *s, uint64_t v)
 {
-    v = cpu_to_le64(v);
+    v = htole64(v);
     saa_wbytes(s, &v, 8);
 }
 
 void saa_writeaddr(struct SAA *s, uint64_t v, size_t len)
 {
-    v = cpu_to_le64(v);
+    v = htole64(v);
     saa_wbytes(s, &v, len);
 }
 

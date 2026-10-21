@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2018 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2018 The NASM Authors - All Rights Reserved */
 
 #ifndef OUTPUT_ELF_H
 #define OUTPUT_ELF_H
@@ -88,9 +58,9 @@
 #define EM_X86_64	62
 #define EM_CRIS		76
 #define EM_V850		87
-#define EM_ALPHA	0x9026	/* Interrim Alpha that stuck around */
+#define EM_ALPHA	0x9026	/* Interim Alpha that stuck around */
 #define EM_CYGNUS_V850	0x9080	/* Old v850 ID used by Cygnus */
-#define EM_S390_OLD	0xA390	/* Obsolete interrim value for S/390 */
+#define EM_S390_OLD	0xA390	/* Obsolete interim value for S/390 */
 
 /* Dynamic type values */
 #define DT_NULL		0
@@ -120,7 +90,7 @@
 #define DT_LOPROC	0x70000000
 #define DT_HIPROC	0x7fffffff
 
-/* Auxilliary table entries */
+/* Auxiliary table entries */
 #define AT_NULL		0	/* end of vector */
 #define AT_IGNORE	1	/* entry should be ignored */
 #define AT_EXECFD	2	/* file descriptor of program */
@@ -148,23 +118,27 @@
 #define PF_R		0x4
 
 /* Section header types */
-#define SHT_NULL	0
-#define SHT_PROGBITS	1
-#define SHT_SYMTAB	2
-#define SHT_STRTAB	3
-#define SHT_RELA	4
-#define SHT_HASH	5
-#define SHT_DYNAMIC	6
-#define SHT_NOTE	7
-#define SHT_NOBITS	8
-#define SHT_REL		9
-#define SHT_SHLIB	10
-#define SHT_DYNSYM	11
-#define SHT_NUM		12
-#define SHT_LOPROC	0x70000000
-#define SHT_HIPROC	0x7fffffff
-#define SHT_LOUSER	0x80000000
-#define SHT_HIUSER	0xffffffff
+#define SHT_NULL        0
+#define SHT_PROGBITS    1
+#define SHT_SYMTAB      2
+#define SHT_STRTAB      3
+#define SHT_RELA        4
+#define SHT_HASH        5
+#define SHT_DYNAMIC     6
+#define SHT_NOTE        7
+#define SHT_NOBITS      8
+#define SHT_REL         9
+#define SHT_SHLIB       10
+#define SHT_DYNSYM      11
+#define SHT_INIT_ARRAY	14
+#define SHT_FINI_ARRAY	15
+#define SHT_PREINIT_ARRAY 16
+#define SHT_GROUP	17
+#define SHT_SYMTAB_SHNDX 18
+#define SHT_LOPROC      0x70000000
+#define SHT_HIPROC      0x7fffffff
+#define SHT_LOUSER      0x80000000
+#define SHT_HIUSER      0xffffffff
 
 /* Section header flags */
 #define SHF_WRITE		(1 << 0)	/* Writable */
@@ -179,18 +153,29 @@
 #define SHF_TLS			(1 << 10)	/* Section hold thread-local data */
 
 /* Special section numbers */
-#define SHN_UNDEF	0
-#define SHN_LORESERVE	0xff00
-#define SHN_LOPROC	0xff00
-#define SHN_HIPROC	0xff1f
-#define SHN_ABS		0xfff1
-#define SHN_COMMON	0xfff2
-#define SHN_HIRESERVE	0xffff
+#define SHN_UNDEF       0x0000
+#define SHN_LORESERVE   0xff00
+#define SHN_LOPROC      0xff00
+#define SHN_HIPROC      0xff1f
+#define SHN_ABS         0xfff1
+#define SHN_COMMON      0xfff2
+#define SHN_XINDEX	0xffff
+#define SHN_HIRESERVE   0xffff
+
+/* Same, but signed/sign-extended */
+#define XSHN_UNDEF      ((int16_t)SHN_UNDEF)
+#define XSHN_LORESERVE  ((int16_t)SHN_LORESERVE)
+#define XSHN_LOPROC     ((int16_t)SHN_LOPROC)
+#define XSHN_HIPROC     ((int16_t)SHN_HIPROC)
+#define XSHN_ABS        ((int16_t)SHN_ABS)
+#define XSHN_COMMON     ((int16_t)SHN_COMMON)
+#define XSHN_XINDEX     ((int16_t)SHN_XINDEX)
+#define XSHN_HIRESERVE  ((int16_t)SHN_HIRESERVE)
 
 /* Section align flag */
 #define SHA_ANY		1	/* No alignment constraint */
 
-/* Lenght of magic at the start of a file */
+/* Length of magic at the start of a file */
 #define EI_NIDENT	16
 
 /* Magic number constants... */
@@ -347,7 +332,10 @@ enum reloc32_type {
 	R_386_16		= 20,	/* A 16-bit absolute relocation */
 	R_386_PC16		= 21,	/* A 16-bit PC-relative relocation */
 	R_386_8			= 22,	/* An 8-bit absolute relocation */
-	R_386_PC8		= 23	/* An 8-bit PC-relative relocation */
+	R_386_PC8		= 23,	/* An 8-bit PC-relative relocation */
+        R_386_SEG16		= 45,   /* A 16-bit real-mode segment */
+        R_386_SUB16		= 46,   /* Subtract 16-bit value */
+        R_386_SUB32		= 47    /* Subtract 32-bit value */
 };
 
 #define ELF64_R_SYM(x)		((x) >> 32)

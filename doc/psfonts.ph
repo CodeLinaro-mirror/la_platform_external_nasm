@@ -4,50 +4,95 @@
 #
 
 # Font substitution lists, in order of preference
-my @TText = ('SourceSansPro-Bold', 'ClearSans-Bold', 'LiberationSans-Bold',
-	     'Arial-Bold', 'Helvetica-Bold');
-my @TItal = ('SourceSansPro-BoldIt', 'ClearSans-BoldItalic', 'LiberationSans-BoldItalic',
-	     'Arial-BoldItalic', 'Helvetica-BoldItalic');
-my @TCode = ('SourceCodePro-Bold', 'LiberationMono-Bold', 'Courier-Bold');
-my @HText = ('SourceSansPro-Semibold', 'ClearSans-Bold', 'Arial-Bold', 'Helvetica-Bold');
-my @HItal = ('SourceSansPro-SemiboldIt', 'ClearSans-BoldItalic',
-	     'Arial-BoldItalic', 'Helvetica-BoldItalic');
-my @HCode = ('SourceCodePro-Semibold', 'LiberationMono-Bold', 'Courier-Bold');
-my @BText = ('SourceSansPro-Regular', 'ClearSans', 'LiberationSans', 'Arial', 'Helvetica');
-my @BItal = ('SourceSansPro-It', 'ClearSans-Italic', 'LiberationSans-Italic',
-	     'Arial-Italic', 'Helvetica-Italic');
-my @BCode = ('SourceCodePro-Regular', 'LiberationMono', 'Courier');
-my @QText = ('SourceSansPro-It', 'ClearSans-Italic', 'LiberationSans-Italic',
-	     'Arial-Italic', 'Helvetica-Italic');
-my @QBold = ('SourceSansPro-BoldIt', 'ClearSans-BoldItalic', 'LiberationSans-BoldItalic', 'Arial-Bold', 'Helvetica-BoldItalic');
-my @QCode = ('SourceCodePro-Regular', 'LiberationMono', 'Courier');
+
+# Note: for some reason the Source Pro fonts use -It rather than
+# -Italic for the PostScript name of the OTF font, but some systems
+# have been said to want it the other way, maybe because they have the
+# TTF format installed?
+#
+# Thus, support various aliases in combination.
+
+sub font {
+    my($fonts, @mods) = @_;
+    my @f = map { $_.'-' } @$fonts;
+
+    foreach my $m (@mods) {
+	@f = map { my $ff = $_; map { $ff.$_ } @$m } @f;
+    }
+
+    return map { /^(.*?)-*$/; $1 } @f;
+}
+
+my $text    = ['Roboto', 'SourceSans', 'SourceSans3',
+	       'SourceSansPro', 'SourceSansPro3',
+	       'LiberationSans', 'Arial', 'Helvetica'];
+my $code    = ['RobotoMono', 'SourceCodePro', 'LiberationMono', 'Courier'];
+my $regular = ['Regular', ''];
+my $italic  = ['Italic', 'It'];
+my $bold    = ['Bold'];
+my $medium  = ['Medium', 'Semibold', 'Regular'];
+my $semi    = ['Semibold', 'Bold'];
+
+my @TText = font($text, $bold);
+my @TItal = font($text, $bold, $italic);
+my @TCode = font($code, $bold);
+my @HText = font($text, $semi);
+my @HItal = font($text, $semi, $italic);
+my @HCode = font($code, $bold);
+my @BText = font($text, $regular);
+my @BItal = font($text, $italic);
+my @BCode = font($code, $medium);
+my @QText = font($text, $italic);
+my @QBold = font($text, $bold, $italic);
+my @QCode = font($code, $regular);
+my @XCode = font($code, $regular);
 
 # The fonts we want to use for various things
 # The order is: <normal> <emphatic> <code>
 
+my $lf = 1.2;			# Leading scale factor
+my $cf = 0.8;			# Code size scale factor
+
+my $st = 20;
 %TitlFont = (name => 'tfont',
-	     leading => 24,
-	     fonts => [[20, \@TText], [20, \@TItal], [20, \@TCode]]);
+	     leading => $st*$lf,
+	     fonts => [[$st, \@TText], [$st, \@TItal], [$st*$cf, \@TCode]]);
+
+my $sc = 18;
 %ChapFont = (name => 'cfont',
-	     leading => 21.6,
-	     fonts => [[18, \@HText], [18, \@HItal], [18, \@HCode]]);
+	     leading => $sc*$lf,
+	     fonts => [[$sc, \@HText], [$sc, \@HItal], [$sc*$cf, \@HCode]]);
+
+my $sh = 14;
 %HeadFont = (name => 'hfont',
-		leading => 16.8,
-		fonts => [[14, \@HText], [14, \@HItal], [14, \@HCode]]);
+		leading => $sh*$lf,
+		fonts => [[$sh, \@HText], [$sh, \@HItal], [$sh*$cf, \@HCode]]);
+
+my $ss = 12;
 %SubhFont = (name => 'sfont',
-	     leading => 14.4,
-	     fonts => [[12, \@HText], [12, \@HItal], [12, \@HCode]]);
+	     leading => $ss*$lf,
+	     fonts => [[$ss, \@HText], [$ss, \@HItal], [$ss*$cf, \@HCode]]);
+
+my $sb = 10;
 %BodyFont = (name => 'bfont',
-	     leading => 12,
-	     fonts => [[10, \@BText], [10, \@BItal], [10, \@BCode]]);
+	     leading => $sb*$lf,
+	     fonts => [[$sb, \@BText], [$sb, \@BItal], [$sb*$cf, \@BCode]]);
+
+my $sq = 9;
 %BquoFont = (name => 'qfont',
-	     leading => 10.8,
-	     fonts => [[9, \@QText], [9, \@QBold], [9, \@QCode]]);
+	     leading => $sq*$lf,
+	     fonts => [[$sq, \@QText], [$sq, \@QBold], [$sq*$cf, \@QCode]]);
+
+my $sx = $sb*$cf;
+%CodeFont = (name => 'xfont',
+	     leading => $sx*$lf,
+	     fonts => [[$sx, \@XCode], [$sx, \@XCode], [$sx, \@XCode]]);
+
 #
 # List of all fontsets; used to compute the list of fonts needed
 #
 @AllFonts = ( \%TitlFont, \%ChapFont, \%HeadFont, \%SubhFont, \%BodyFont,
-    \%BquoFont);
+    \%BquoFont, \%CodeFont );
 
 # OK
 1;

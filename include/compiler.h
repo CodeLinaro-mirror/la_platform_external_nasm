@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *   
- *   Copyright 2007-2017 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *     
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 2007-2025 The NASM Authors - All Rights Reserved */
 
 /*
  * compiler.h
@@ -54,14 +24,20 @@
 /* On Microsoft platforms we support multibyte character sets in filenames */
 #define _MBCS 1
 
+#include "autoconf/attribute.h"
+
 #ifdef HAVE_CONFIG_H
 # include "config/config.h"
-#elif defined(_MSC_VER) && (_MSC_VER >= 1310)
-# include "config/msvc.h"
-#elif defined(__WATCOMC__)
-# include "config/watcom.h"
 #else
-# include "config/unknown.h"
+# if defined(_MSC_VER) && (_MSC_VER >= 1310)
+#  include "config/msvc.h"
+# elif defined(__WATCOMC__)
+#  include "config/watcom.h"
+# else
+#  include "config/unknown.h"
+# endif
+/* This unconditionally defines some macros we really want */
+# include "config/unconfig.h"
 #endif /* Configuration file */
 
 /* This is required to get the standard <inttypes.h> macros when compiling
@@ -81,19 +57,63 @@
 #include <stddef.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <limits.h>
+#include <errno.h>
 
+#ifdef HAVE_STRINGS_H
+# include <strings.h>
+#endif
 #ifdef HAVE_SYS_TYPES_H
 # include <sys/types.h>
 #endif
 
-#ifdef HAVE_ENDIAN_H
-# include <endian.h>
-#elif defined(HAVE_SYS_ENDIAN_H)
-# include <sys/endian.h>
-#elif defined(HAVE_MACHINE_ENDIAN_H)
-# include <machine/endian.h>
+/*
+ * This is impossible to do 100% accurately, because the actual type
+ * of size_t may differ from its range.
+ */
+#ifdef _WIN32
+# define PRIz "I"               /* Needed for msvcrt, not ucrt */
+#elif defined(PRINTF_SUPPORTS_Z) || \
+    (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L)
+# define PRIz "z"
+#elif SIZE_MAX == UINT_MAX
+# define PRIz ""
+#elif SIZE_MAX == ULONG_MAX
+# define PRIz "l"
+#elif SIZE_MAX == ULONGLONG_MAX
+# define PRIz "ll"
+#else
+# error "Unable to determine printf format for size_t"
 #endif
+#define PRIzd PRIz "u"          /* size_t is always unsigned */
+#define PRIzu PRIz "u"
+#define PRIzu PRIz "u"
+#define PRIzx PRIz "x"
+#define PRIzX PRIz "X"
+
+#ifdef HAVE_STDBIT_H
+
+# include <stdbit.h>
+
+# undef WORDS_LITTLEENDIAN
+# undef WORDS_BIGENDIAN
+# if __STDC_ENDIAN_NATIVE__ == __STDC_ENDIAN_LITTLE__
+#  define WORDS_LITTLEENDIAN 1
+# elif __STDC_ENDIAN_NATIVE__ == __STDC_ENDIAN_BIG__
+#  define WORDS_BIGENDIAN 1
+# endif
+
+#else  /* No <stdbit.h> */
+
+# ifdef HAVE_ENDIAN_H
+#  include <endian.h>
+# elif defined(HAVE_SYS_ENDIAN_H)
+#  include <sys/endian.h>
+# elif defined(HAVE_MACHINE_ENDIAN_H)
+#  include <machine/endian.h>
+# endif
 
 /*
  * If we have BYTE_ORDER defined, or the compiler provides
@@ -101,22 +121,24 @@
  * came up with, especially since autoconf obviously can't figure
  * things out for a universal compiler.
  */
-#if defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
-# undef WORDS_LITTLEENDIAN
-# undef WORDS_BIGENDIAN
-# define WORDS_BIGENDIAN 1
-#elif defined(__LITTLE_ENDIAN__) && !defined(__BIG_ENDIAN__)
-# undef WORDS_LITTLEENDIAN
-# undef WORDS_BIGENDIAN
-# define WORDS_LITTLEENDIAN 1
-#elif defined(BYTE_ORDER) && defined(LITTLE_ENDIAN) && defined(BIG_ENDIAN)
-# undef WORDS_LITTLEENDIAN
-# undef WORDS_BIGENDIAN
-# if BYTE_ORDER == LITTLE_ENDIAN
-#  define WORDS_LITTLEENDIAN 1
-# elif BYTE_ORDER == BIG_ENDIAN
+# if defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
+#  undef WORDS_LITTLEENDIAN
+#  undef WORDS_BIGENDIAN
 #  define WORDS_BIGENDIAN 1
+# elif defined(__LITTLE_ENDIAN__) && !defined(__BIG_ENDIAN__)
+#  undef WORDS_LITTLEENDIAN
+#  undef WORDS_BIGENDIAN
+#  define WORDS_LITTLEENDIAN 1
+# elif defined(BYTE_ORDER) && defined(LITTLE_ENDIAN) && defined(BIG_ENDIAN)
+#  undef WORDS_LITTLEENDIAN
+#  undef WORDS_BIGENDIAN
+#  if BYTE_ORDER == LITTLE_ENDIAN
+#   define WORDS_LITTLEENDIAN 1
+#  elif BYTE_ORDER == BIG_ENDIAN
+#   define WORDS_BIGENDIAN 1
+#  endif
 # endif
+
 #endif
 
 /*
@@ -155,28 +177,64 @@ int vsnprintf(char *, size_t, const char *, va_list);
 size_t strlcpy(char *, const char *, size_t);
 #endif
 
-#if !defined(HAVE_STRCHRNUL) || !HAVE_DECL_STRCHRNUL
-char *strrchrnul(const char *, int);
-#endif
-
-#ifndef __cplusplus		/* C++ has false, true, bool as keywords */
+#if !defined(__cplusplus) || (__STDC_VERSION >= 202311L)
+/* C++ and C23 have bool, false, and true as proper keywords */
 # ifdef HAVE_STDBOOL_H
+/* If <stdbool.h> exists, include it explicitly to prevent it from
+   begin included later, causing the "bool" macro to be defined. */
 #  include <stdbool.h>
-# elif defined(HAVE__BOOL)
-#  typedef _Bool bool
+#  ifdef bool
+/* Force bool to be a typedef instead of a macro. What a "clever" hack
+   this is... */
+    typedef bool                /* The macro definition of bool */
+#  undef bool
+        bool;                   /* No longer the macro definition */
+#  endif
+# elif defined(HAVE___BOOL)
+   typedef _Bool bool;
 #  define false 0
 #  define true 1
 # else
-/* This is sort of dangerous, since casts will behave different than
-   casting to the standard boolean type.  Always use !!, not (bool). */
+/* This is a bit dangerous, because casting to this ersatz bool
+   will not produce the same result as the standard (bool) cast.
+   Instead, use the bool() constructor-style macro defined below. */
 typedef enum bool { false, true } bool;
 # endif
+/* This amounts to a C++-style conversion cast to bool.  This works
+   because C ignores an argument-taking macro when used without an
+   argument and because bool was redefined as a typedef if it previously
+   was defined as a macro (see above.) */
+# define bool(x) ((bool)!!(x))
 #endif
+
+/* Create a NULL pointer of the same type as the address of
+   the argument, without actually evaluating said argument. */
+#define nullas(p) (0 ? &(p) : NULL)
+
+/* Convert an offsetted NULL pointer dereference to a size_t offset.
+   Technically non-portable as taking the offset from a NULL pointer
+   is undefined behavior, but... */
+#define null_offset(p) ((size_t)((const char *)&(p) - (const char *)NULL))
 
 /* Provide a substitute for offsetof() if we don't have one.  This
    variant works on most (but not *all*) systems... */
 #ifndef offsetof
-# define offsetof(t,m) ((size_t)&(((t *)0)->m))
+# define offsetof(t,m) null_offset(((t *)NULL)->m)
+#endif
+
+/* If typeof is defined as a macro, assume we have typeof even if
+   HAVE_TYPEOF is not declared (e.g. due to not using autoconf.) */
+#ifdef typeof
+# define HAVE_TYPEOF 1
+#endif
+
+/* This is like offsetof(), but takes an object rather than a type. */
+#ifndef offsetin
+# ifdef HAVE_TYPEOF
+#  define offsetin(p,m) offsetof(typeof(p),m)
+# else
+#  define offsetin(p,m)	null_offset(nullas(p)->m)
+# endif
 #endif
 
 /* The container_of construct: if p is a pointer to member m of
@@ -209,6 +267,20 @@ char *strsep(char **, const char *);
 
 #if !HAVE_DECL_STRNLEN
 size_t strnlen(const char *s, size_t maxlen);
+#endif
+
+#ifndef HAVE_MEMPCPY
+static inline void *mempcpy(void *dst, const void *src, size_t n)
+{
+    return (char *)memcpy(dst, src, n) + n;
+}
+#endif
+
+#ifndef HAVE_MEMPSET
+static inline void *mempset(void *dst, int c, size_t n)
+{
+    return (char *)memset(dst, c, n) + n;
+}
 #endif
 
 /*
@@ -251,110 +323,147 @@ size_t strnlen(const char *s, size_t maxlen);
  * Hints to the compiler that a particular branch of code is more or
  * less likely to be taken.
  */
-#if HAVE___BUILTIN_EXPECT
-# define likely(x)	__builtin_expect(!!(x), 1)
-# define unlikely(x)	__builtin_expect(!!(x), 0)
+#ifdef HAVE___BUILTIN_EXPECT
+# define likely(x)	__builtin_expect(bool(x), true)
+# define unlikely(x)	__builtin_expect(bool(x), false)
 #else
-# define likely(x)	(!!(x))
-# define unlikely(x)	(!!(x))
+# define likely(x)	bool(x)
+# define unlikely(x)	bool(x)
+#endif
+
+#ifdef HAVE___BUILTIN_PREFETCH
+# define prefetch(x) __builtin_prefetch(x)
+#else
+# define prefetch(x) ((void)(x))
 #endif
 
 /*
- * Hints about malloc-like functions that never return NULL
+ * Attributes
  */
-#ifdef HAVE_FUNC_ATTRIBUTE_RETURNS_NONNULL
-# define never_null __attribute__((returns_nonnull))
-#else
-# define never_null
-#endif
 
-#ifdef HAVE_FUNC_ATTRIBUTE_MALLOC
-# define safe_alloc never_null __attribute__((malloc))
-#else
-# define safe_alloc never_null
-#endif
+#define safe_alloc     never_null     malloc_func
+#define safe_alloc_ptr never_null_ptr malloc_func_ptr
 
-#ifdef HAVE_FUNC_ATTRIBUTE_ALLOC_SIZE
-# define safe_malloc(s) safe_alloc __attribute__((alloc_size(s)))
-# define safe_malloc2(s1,s2) safe_alloc __attribute__((alloc_size(s1,s2)))
-# define safe_realloc(s) never_null __attribute__((alloc_size(s)))
-#else
-# define safe_malloc(s) safe_alloc
-# define safe_malloc2(s1,s2) safe_alloc
-# define safe_realloc(s) never_null
-#endif
-
-#ifdef HAVE_FUNC_ATTRIBUTE_SENTINEL
-# define end_with_null __attribute__((sentinel))
-#else
-# define end_with_null
-#endif
+#define safe_malloc(s)          safe_alloc     alloc_size_func1(s)
+#define safe_malloc2(s1,s2)     safe_alloc     alloc_size_func2(s1,s2)
+#define safe_realloc(s)         never_null     alloc_size_func1(s)
+#define safe_malloc_ptr(s)      safe_alloc_ptr alloc_size_func1_ptr(s)
+#define safe_malloc2_ptr(s1,s2) safe_alloc_ptr alloc_size_func2_ptr(s1,s2)
+#define safe_realloc_ptr(s)     never_null_ptr alloc_size_func1_ptr(s)
 
 /*
  * How to tell the compiler that a function doesn't return
  */
 #ifdef HAVE_STDNORETURN_H
 # include <stdnoreturn.h>
-# define no_return noreturn void
-#elif defined(HAVE_FUNC_ATTRIBUTE_NORETURN)
-# define no_return void __attribute__((noreturn))
+# define no_return noreturn
 #elif defined(_MSC_VER)
-# define no_return __declspec(noreturn) void
+# define no_return __declspec(noreturn)
 #else
-# define no_return void
+# define no_return noreturn_func
 #endif
 
-/*
- * How to tell the compiler that a function is unlikely to be executed.
- * This differs from unlikely() in that it is applied to a function call,
- * not a boolean condition.
- */
-#ifdef HAVE_FUNC_ATTRIBUTE_COLD
-# define unlikely_func __attribute__((cold))
-#else
-# define unlikely_func
+/* Function priority: pure < reproducible < unsequenced < const */
+
+#ifndef HAVE_FUNC_ATTRIBUTE_REPRODUCIBLE
+# undef reproducible_func
+# define reproducible_func pure_func
+# undef reproducible_func_ptr
+# define reproducible_func_ptr pure_func_ptr
+#endif
+
+#ifndef HAVE_FUNC_ATTRIBUTE_UNSEQUENCED
+# undef unsequenced_func
+# define unsequenced_func reproducible_func
+# undef unsequenced_func_ptr
+# define unsequenced_func_ptr reproducible_func_ptr
+#endif
+
+#ifndef HAVE_FUNC_ATTRIBUTE_CONST
+# undef const_func
+# define const_func reproducible_func
+# undef const_func_ptr
+# define const_func_ptr reproducible_func_ptr
 #endif
 
 /*
  * A fatal function is both unlikely and no_return
  */
-#define fatal_func no_return unlikely_func
+#define fatal_func        no_return unlikely_func void
+#define static_fatal_func no_return unlikely_func static void
 
 /*
  * How to tell the compiler that a function takes a printf-like string
  */
-#ifdef HAVE_FUNC_ATTRIBUTE_FORMAT
-# define printf_func(fmt, list) __attribute__((format(printf, fmt, list)))
-#else
-# define printf_func(fmt, list)
-#endif
-
-/*
- * How to tell the compiler that a function is pure arithmetic
- */
-#ifdef HAVE_FUNC_ATTRIBUTE_CONST
-# define const_func __attribute__((const))
-#else
-# define const_func
-#endif
-
-/*
- * This function has no side effects, but depends on its arguments,
- * memory pointed to by its arguments, or global variables.
- * NOTE: functions that return a value by modifying memory pointed to
- * by a pointer argument are *NOT* considered pure.
- */
-#ifdef HAVE_FUNC_ATTRIBUTE_PURE
-# define pure_func __attribute__((pure))
-#else
-# define pure_func
-#endif
+#define printf_func(fmt, list)     format_func3(printf,fmt,list)
+#define printf_func_ptr(fmt, list) format_func3_ptr(printf,fmt,list)
+#define vprintf_func(fmt)          format_func3(printf,fmt,0)
+#define vprintf_func_ptr(fmt)      format_func3_ptr(printf,fmt,0)
 
 /* Determine probabilistically if something is a compile-time constant */
 #ifdef HAVE___BUILTIN_CONSTANT_P
-# define is_constant(x) __builtin_constant_p(x)
+# if defined(__GNUC__) && (__GNUC__ >= 5)
+#  define is_constant(x) __builtin_constant_p((x))
+# else
+#  define is_constant(x) false
+# endif
 #else
 # define is_constant(x) false
+#endif
+
+/*
+ * If we can guarantee that a particular expression is constant, use it,
+ * otherwise use a different version.
+ */
+#if defined(__GNUC__) && (__GNUC__ >= 3)
+# define not_pedantic_start                             \
+    _Pragma("GCC diagnostic push")                      \
+    _Pragma("GCC diagnostic ignored \"-Wpedantic\"")
+# define not_pedantic_end                       \
+    _Pragma("GCC diagnostic pop")
+#else
+# define not_pedantic_start
+# define not_pedantic_end
+#endif
+
+#ifdef HAVE___BUILTIN_CHOOSE_EXPR
+# define if_constant(x,y) __builtin_choose_expr(is_constant(x),(x),(y))
+#else
+# define if_constant(x,y) (y)
+#endif
+
+/*
+ * The autoconf documentation states:
+ *
+ * `va_copy'
+ *    The C99 standard provides `va_copy' for copying `va_list'
+ *    variables.  It may be available in older environments too, though
+ *    possibly as `__va_copy' (e.g., `gcc' in strict pre-C99 mode).
+ *    These can be tested with `#ifdef'.  A fallback to `memcpy (&dst,
+ *    &src, sizeof (va_list))' gives maximum portability.
+ */
+#ifndef va_copy
+# ifdef __va_copy
+#  define va_copy(dst,src) __va_copy(dst,src)
+# else
+#  define va_copy(dst,src) memcpy(&(dst),&(src),sizeof(va_list))
+# endif
+#endif
+
+/*
+ * If SIZE_MAX is not defined, rely on size_t being unsigned
+ */
+#ifndef SIZE_MAX
+# define SIZE_MAX (((size_t)0) - 1)
+#endif
+
+/*
+ * Current function name, if available, otherwise NULL
+ */
+#ifdef HAVE_FUNC_NAME
+# define NASM_FUNC __func__
+#else
+# define NASM_FUNC NULL
 #endif
 
 /* Watcom doesn't handle switch statements with 64-bit types, hack around it */

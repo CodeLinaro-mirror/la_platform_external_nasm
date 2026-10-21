@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2018 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2025 The NASM Authors - All Rights Reserved */
 
 /*
  * outmacho.c	output routines for the Netwide Assembler to produce
@@ -38,10 +8,7 @@
 
 #include "compiler.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
+#include "nctype.h"
 
 #include "nasm.h"
 #include "nasmlib.h"
@@ -67,16 +34,25 @@
 #define MACHO_SYMCMD_SIZE		24
 #define MACHO_NLIST_SIZE		12
 #define MACHO_RELINFO_SIZE		8
+#define MACHO_BUILDVERSION_SIZE		24
 
 #define MACHO_HEADER64_SIZE		32
 #define MACHO_SEGCMD64_SIZE		72
 #define MACHO_SECTCMD64_SIZE		80
 #define MACHO_NLIST64_SIZE		16
+#define MACHO_BUILD_VERSION_SIZE	24
 
 /* Mach-O relocations numbers */
 
 #define VM_PROT_DEFAULT	(VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE)
 #define VM_PROT_ALL	(VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE)
+
+/* Platforms enum */
+enum macho_platform {
+#define X(_platform, _id, _name) _platform = _id,
+    MACHO_ALL_PLATFORMS
+#undef X
+};
 
 /* Our internal relocation types */
 enum reltype {
@@ -217,6 +193,10 @@ static uint64_t seg_filesize = 0;
 static uint64_t seg_vmsize = 0;
 static uint32_t seg_nsects = 0;
 static uint64_t rel_padcnt = 0;
+
+static uint32_t buildver_platform = PLATFORM_UNKNOWN;
+static uint32_t buildver_minos = 0; // x.y.z is 0xXXXXYYZZ
+static uint32_t buildver_sdk = 0; // x.y.z is 0xXXXXYYZZ
 
 /*
  * Functions for handling fixed-length zero-padded string
@@ -363,7 +343,6 @@ static void macho_init(void)
     strs = saa_init(1L);
 
     section_by_index = raa_init();
-    hash_init(&section_by_name, HASH_MEDIUM);
 
     /* string table starts with a zero byte so index 0 is an empty string */
     saa_wbytes(strs, zero_buffer, 1);
@@ -473,8 +452,8 @@ static int64_t add_reloc(struct section *sect, int32_t section,
 	break;
 
     case RL_SUB: /* obsolete */
-	nasm_error(ERR_WARNING, "relcation with subtraction"
-		   "becomes to be obsolete");
+	nasm_warn(WARN_OTHER, "relcation with subtraction"
+		   " becomes to be obsolete");
 	r->ext = 0;
 	r->type = X86_64_RELOC_SUBTRACTOR;
 	break;
@@ -548,10 +527,9 @@ static int64_t add_reloc(struct section *sect, int32_t section,
     return 0;
 }
 
-static void macho_output(int32_t secto, const void *data,
-			 enum out_type type, uint64_t size,
-                         int32_t section, int32_t wrt)
+static void macho_output(const struct out_data *out)
 {
+    OUT_LEGACY(out,secto,data,type,size,section,wrt);
     struct section *s;
     int64_t addr, offset;
     uint8_t mydata[16], *p;
@@ -560,8 +538,8 @@ static void macho_output(int32_t secto, const void *data,
 
     s = get_section_by_index(secto);
     if (!s) {
-        nasm_error(ERR_WARNING, "attempt to assemble code in"
-              " section %d: defaulting to `.text'", secto);
+        nasm_warn(WARN_OTHER, "attempt to assemble code in"
+                  " unknown section: defaulting to `.text'");
         s = get_section_by_name("__TEXT", "__text");
 
         /* should never happen */
@@ -582,11 +560,11 @@ static void macho_output(int32_t secto, const void *data,
     is_bss = (s->flags & SECTION_TYPE) == S_ZEROFILL;
 
     if (is_bss && type != OUT_RESERVE) {
-        nasm_error(ERR_WARNING, "attempt to initialize memory in "
+        nasm_warn(WARN_OTHER, "attempt to initialize memory in "
               "BSS section: ignored");
         /* FIXME */
-        nasm_error(ERR_WARNING, "section size may be negative"
-            "with address symbols");
+        nasm_warn(WARN_OTHER, "section size may be negative"
+            " with address symbols");
         s->size += realsize(type, size);
         return;
     }
@@ -596,7 +574,7 @@ static void macho_output(int32_t secto, const void *data,
     switch (type) {
     case OUT_RESERVE:
         if (!is_bss) {
-            nasm_error(ERR_WARNING, "uninitialized space declared in"
+            nasm_warn(WARN_ZEROING, "uninitialized space declared in"
 		       " %s,%s section: zeroing", s->segname, s->sectname);
 
             sect_write(s, NULL, size);
@@ -789,7 +767,7 @@ lookup_known_section(const char *name, bool by_sectname)
     return NULL;
 }
 
-static int32_t macho_section(char *name, int pass, int *bits)
+static int32_t macho_section(char *name, int *bits)
 {
     const struct macho_known_section *known_section;
     const struct macho_known_section_attr *sa;
@@ -801,8 +779,6 @@ static int32_t macho_section(char *name, int pass, int *bits)
     char *comma;
 
     bool new_seg;
-
-    (void)pass;
 
     /* Default to the appropriate number of bits. */
     if (!name) {
@@ -987,8 +963,9 @@ static void macho_symdef(char *name, int32_t section, int64_t offset,
 
 #if defined(DEBUG) && DEBUG>2
     nasm_error(ERR_DEBUG,
-            " macho_symdef: %s, pass0=%d, passn=%"PRId64", sec=%"PRIx32", off=%"PRIx64", is_global=%d, %s\n",
-	       name, pass0, passn, section, offset, is_global, special);
+            " macho_symdef: %s, pass=%"PRId64" type %s, sec=%"PRIx32", off=%"PRIx64", is_global=%d, %s\n",
+	       name, pass_count(), pass_types[pass_type()],
+	       section, offset, is_global, special);
 #endif
 
     if (is_global == 3) {
@@ -1088,7 +1065,8 @@ static void macho_symdef(char *name, int32_t section, int64_t offset,
                 /* give an error on unfound section if it's not an
                  ** external or common symbol (assemble_file() does a
                  ** seg_alloc() on every call for them) */
-                nasm_panic("in-file index for section %d not found, is_global = %d", section, is_global);
+                nasm_panic("in-file index for section %"PRId32" not found, "
+                           "is_global = %d", section, is_global);
 		break;
             }
 	}
@@ -1129,7 +1107,7 @@ extern macros_t macho_stdmac[];
 static int layout_compare (const struct symbol **s1,
 			   const struct symbol **s2)
 {
-    return (strcmp ((*s1)->name, (*s2)->name));
+    return strcmp ((*s1)->name, (*s2)->name);
 }
 
 /* The native assembler does a few things in a similar function
@@ -1270,6 +1248,11 @@ static void macho_calculate_sizes (void)
 
     /* calculate size of all headers, load commands and sections to
     ** get a pointer to the start of all the raw data */
+    if (buildver_platform != PLATFORM_UNKNOWN) {
+	++head_ncmds;
+	head_sizeofcmds += MACHO_BUILD_VERSION_SIZE;
+    }
+
     if (seg_nsects > 0) {
         ++head_ncmds;
         head_sizeofcmds += fmt.segcmd_size  + seg_nsects * fmt.sectcmd_size;
@@ -1609,7 +1592,7 @@ static void macho_write (void)
     **   uint32_t in-file offset
     **   uint32_t alignment
     **    (irrelevant in MH_OBJECT)
-    **   uint32_t in-file offset of relocation entires
+    **   uint32_t in-file offset of relocation entries
     **   uint32_t number of relocations
     **   uint32_t flags
     **   uint32_t reserved
@@ -1652,11 +1635,21 @@ static void macho_write (void)
 
     offset = fmt.header_size + head_sizeofcmds;
 
+    /* emit the build_version command early, if desired */
+    if (buildver_platform != PLATFORM_UNKNOWN) {
+	fwriteint32_t(LC_BUILD_VERSION, ofile);	/* cmd == LC_BUILD_VERSION */
+	fwriteint32_t(MACHO_BUILD_VERSION_SIZE, ofile); /* size of load command */
+	fwriteint32_t(buildver_platform, ofile); /* platform */
+	fwriteint32_t(buildver_minos, ofile);	/* minos */
+	fwriteint32_t(buildver_sdk, ofile);	/* sdk */
+	fwriteint32_t(0, ofile);		/* ntools */
+    }
+
     /* emit the segment load command */
     if (seg_nsects > 0)
 	offset = macho_write_segment (offset);
     else
-        nasm_error(ERR_WARNING, "no sections?");
+        nasm_warn(WARN_OTHER, "no sections?");
 
     if (nsyms > 0) {
         /* write out symbol command */
@@ -1745,7 +1738,7 @@ static bool macho_set_section_attribute_by_symbol(const char *label, uint32_t fl
     int32_t nasm_seg;
     int64_t offset;
 
-    if (!lookup_label(label, &nasm_seg, &offset)) {
+    if (lookup_label(label, &nasm_seg, &offset) == LBL_none) {
 	nasm_error(ERR_NONFATAL, "unknown symbol `%s' in no_dead_strip", label);
 	return false;
     }
@@ -1768,7 +1761,6 @@ static enum directive_result macho_no_dead_strip(const char *labels)
     char *s, *p, *ep;
     char ec;
     enum directive_result rv = DIRR_ERROR;
-    bool real = passn > 1;
 
     p = s = nasm_strdup(labels);
     while (*p) {
@@ -1783,7 +1775,7 @@ static enum directive_result macho_no_dead_strip(const char *labels)
 	    goto err;
 	}
 	*ep = '\0';
-	if (real) {
+	if (!pass_first()) {
 	    if (!macho_set_section_attribute_by_symbol(p, S_ATTR_NO_DEAD_STRIP))
 		rv = DIRR_ERROR;
 	}
@@ -1800,29 +1792,151 @@ err:
     return rv;
 }
 
+static bool macho_match_string(const char **pp, const char *target_name)
+{
+    const char *p = *pp;
+    while (*target_name) {
+	if (*p++ != *target_name++)
+	    return false;
+    }
+
+    /* must have exhausted the run of identifier characters */
+    if (nasm_isidchar(*p)) {
+	return false;
+    }
+
+    *pp = p;
+    return true;
+}
+
+static bool macho_scan_number(const char **pp, int64_t *result)
+{
+    bool error = false;
+    const char *p = *pp;
+    while (nasm_isdigit(*p))
+	++p;
+
+    if (p == *pp) {
+	*result = 0;
+	return false;
+    }
+
+    *result = readnum(*pp, &error);
+    *pp = p;
+    return !error;
+}
+
+static bool macho_scan_version(const char **pp, uint32_t *result)
+{
+    int64_t major = 0;
+    int64_t minor = 0;
+    int64_t trailing = 0;
+
+    /* version: major, minor (, trailing)? */
+    *result = 0;
+
+    if (!macho_scan_number(pp, &major) || major < 0 || major > 65535)
+	return false;
+    *pp = nasm_skip_spaces(*pp);
+    if (**pp != ',') /* comma after major ver is required */
+	return false;
+    *pp = nasm_skip_spaces(*pp + 1);
+
+    if (!macho_scan_number(pp, &minor) || minor < 0 || minor > 255)
+	return false;
+    *pp = nasm_skip_spaces(*pp);
+
+    if (**pp == ',') {
+	/* trailing version present */
+	*pp = nasm_skip_spaces(*pp + 1);
+	if (!macho_scan_number(pp, &trailing) || trailing < 0 || trailing > 255)
+	    return false;
+    }
+
+    *result = (uint32_t) ((major << 16) | (minor << 8) | trailing);
+    return true;
+}
+
+/*
+ * Specify a build version
+ */
+static enum directive_result macho_build_version(const char *buildversion)
+{
+    /* Matching .build_version directive in LLVM-MC */
+    const char *p;
+    uint32_t platform = PLATFORM_UNKNOWN;
+    uint32_t minos = 0;
+    uint32_t sdk = 0;
+
+    p = nasm_skip_spaces(buildversion);
+
+#define X(_platform,_id,_name) if (macho_match_string(&p, _name)) platform = _platform;
+    MACHO_ALL_PLATFORMS
+#undef X
+
+    if (platform == PLATFORM_UNKNOWN) {
+	nasm_nonfatal("unknown platform name");
+	return DIRR_ERROR;
+    }
+
+    p = nasm_skip_spaces(p);
+    if (*p != ',') {
+	nasm_nonfatal("version number required, comma expected");
+	return DIRR_ERROR;
+    }
+    p = nasm_skip_spaces(p + 1);
+
+    if (!macho_scan_version(&p, &minos)) {
+	nasm_nonfatal("malformed version number");
+	return DIRR_ERROR;
+    }
+
+    p = nasm_skip_spaces(p);
+    if (*p) {
+	if (macho_match_string(&p, "sdk_version")) {
+	    p = nasm_skip_spaces(p);
+
+	    if (!macho_scan_version(&p, &sdk)) {
+		nasm_nonfatal("malformed sdk_version");
+		return DIRR_ERROR;
+	    }
+	} else
+	    nasm_nonfatal("extra characters in build_version");
+    }
+
+    buildver_platform = platform;
+    buildver_minos = minos;
+    buildver_sdk = sdk;
+    return DIRR_OK;
+}
+
 /*
  * Mach-O pragmas
  */
 static enum directive_result
 macho_pragma(const struct pragma *pragma)
 {
-    bool real = passn > 1;
-
     switch (pragma->opcode) {
     case D_SUBSECTIONS_VIA_SYMBOLS:
 	if (*pragma->tail)
 	    return DIRR_BADPARAM;
 
-	if (real)
+	if (!pass_first())
 	    head_flags |= MH_SUBSECTIONS_VIA_SYMBOLS;
 
         /* Jmp-match optimization conflicts */
-        optimizing.flag |= OPTIM_DISABLE_JMP_MATCH;
+        optimizing |= OPTIM_DISABLE_JMP_MATCH;
 
 	return DIRR_OK;
 
     case D_NO_DEAD_STRIP:
 	return macho_no_dead_strip(pragma->tail);
+
+    case D_unknown:
+	if (!strcmp(pragma->opname, "build_version"))
+	    return macho_build_version(pragma->tail);
+
+	return DIRR_UNKNOWN;
 
     default:
 	return DIRR_UNKNOWN;	/* Not a Mach-O directive */
@@ -1845,10 +1959,10 @@ static void macho_dbg_generate(void)
     /* debug section defines */
     {
         int bits = 0;
-        macho_section(".debug_abbrev", 0, &bits);
-        macho_section(".debug_info", 0, &bits);
-        macho_section(".debug_line", 0, &bits);
-        macho_section(".debug_str", 0, &bits);
+        macho_section(".debug_abbrev", &bits);
+        macho_section(".debug_info", &bits);
+        macho_section(".debug_line", &bits);
+        macho_section(".debug_str", &bits);
     }
 
     /* dw section walk to find high_addr and total_len */
@@ -1934,8 +2048,7 @@ static void macho_dbg_generate(void)
             saa_free(p_linep);
         }
 
-        macho_output(p_section->index, p_buf_base, OUT_RAWDATA, buf_size, NO_SEG, 0);
-
+        sect_write(p_section, p_buf_base, buf_size);
         nasm_free(p_buf_base);
     }
 
@@ -1950,14 +2063,14 @@ static void macho_dbg_generate(void)
         nasm_assert(p_section != NULL);
 
         producer_str_offset = 0;
-        module_str_offset = dir_str_offset = saa_wcstring(p_str, nasm_signature);
+        module_str_offset = dir_str_offset = saa_wcstring(p_str, nasm_signature());
         dir_str_offset += saa_wcstring(p_str, cur_file);
         saa_wcstring(p_str, cur_dir);
 
         saa_len = p_str->datalen;
         p_buf = nasm_malloc(saa_len);
         saa_rnbytes(p_str, p_buf, saa_len);
-        macho_output(p_section->index, p_buf, OUT_RAWDATA, saa_len, NO_SEG, 0);
+        sect_write(p_section, p_buf, saa_len);
 
         nasm_free(cur_path);
         nasm_free(cur_file);
@@ -2010,7 +2123,7 @@ static void macho_dbg_generate(void)
 
         WRITELONG(p_buf, saa_len);
         saa_rnbytes(p_info, p_buf, saa_len);
-        macho_output(p_section->index, p_buf_base, OUT_RAWDATA, saa_len + 4, NO_SEG, 0);
+        sect_write(p_section, p_buf_base, saa_len + 4);
 
         saa_free(p_info);
         nasm_free(p_buf_base);
@@ -2071,7 +2184,7 @@ static void macho_dbg_generate(void)
         p_buf = nasm_malloc(saa_len);
 
         saa_rnbytes(p_abbrev, p_buf, saa_len);
-        macho_output(p_section->index, p_buf, OUT_RAWDATA, saa_len, NO_SEG, 0);
+        sect_write(p_section, p_buf, saa_len);
 
         saa_free(p_abbrev);
         nasm_free(p_buf);
@@ -2145,9 +2258,13 @@ static void macho_dbg_linenum(const char *file_name, int32_t line_num, int32_t s
             }
         }
 
-        if(need_new_list) {
+        if (need_new_list)
             new_file_list(cur_file, cur_dir);
-        }
+    }
+
+    if (!need_new_list) {
+            nasm_free((void *)cur_file);
+            nasm_free((void *)cur_dir);
     }
 
     dbg_immcall = true;
@@ -2292,11 +2409,14 @@ static void macho32_init(void)
 }
 
 static const struct dfmt macho32_df_dwarf = {
-    "MachO32 (i386) dwarf debug format for Darwin/MacOS",
+    "Mach-O i386 dwarf for Darwin/MacOS",
     "dwarf",
     macho_dbg_init,
     macho_dbg_linenum,
     null_debug_deflabel,
+    NULL,                       /* .debug_smacros */
+    NULL,                       /* .debug_include */
+    NULL,                       /* .debug_mmacros */
     null_debug_directive,
     null_debug_typevalue,
     macho_dbg_output,
@@ -2308,7 +2428,7 @@ static const struct dfmt * const macho32_df_arr[2] =
  { &macho32_df_dwarf, NULL };
 
 const struct ofmt of_macho32 = {
-    "NeXTstep/OpenStep/Rhapsody/Darwin/MacOS X (i386) object files",
+    "Mach-O i386 (Mach, including MacOS X and variants)",
     "macho32",
     ".o",
     0,
@@ -2318,7 +2438,6 @@ const struct ofmt of_macho32 = {
     macho_stdmac,
     macho32_init,
     null_reset,
-    nasm_do_legacy_output,
     macho_output,
     macho_symdef,
     macho_section,
@@ -2359,11 +2478,14 @@ static void macho64_init(void)
 }
 
 static const struct dfmt macho64_df_dwarf = {
-    "MachO64 (x86-64) dwarf debug format for Darwin/MacOS",
+    "Mach-O x86-64 dwarf for Darwin/MacOS",
     "dwarf",
     macho_dbg_init,
     macho_dbg_linenum,
     null_debug_deflabel,
+    NULL,                       /* .debug_smacros */
+    NULL,                       /* .debug_include */
+    NULL,                       /* .debug_mmacros */
     null_debug_directive,
     null_debug_typevalue,
     macho_dbg_output,
@@ -2375,7 +2497,7 @@ static const struct dfmt * const macho64_df_arr[2] =
  { &macho64_df_dwarf, NULL };
 
 const struct ofmt of_macho64 = {
-    "NeXTstep/OpenStep/Rhapsody/Darwin/MacOS X (x86_64) object files",
+    "Mach-O x86-64 (Mach, including MacOS X and variants)",
     "macho64",
     ".o",
     0,
@@ -2385,7 +2507,6 @@ const struct ofmt of_macho64 = {
     macho_stdmac,
     macho64_init,
     null_reset,
-    nasm_do_legacy_output,
     macho_output,
     macho_symdef,
     macho_section,

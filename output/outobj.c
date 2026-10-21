@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2017 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2025 The NASM Authors - All Rights Reserved */
 
 /*
  * outobj.c	output routines for the Netwide Assembler to produce
@@ -38,14 +8,12 @@
 
 #include "compiler.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
-#include <limits.h>
+#include <ctype.h>              /* For toupper() */
+#include "nctype.h"
 
 #include "nasm.h"
 #include "nasmlib.h"
+#include "asmutil.h"
 #include "error.h"
 #include "stdscan.h"
 #include "eval.h"
@@ -54,7 +22,7 @@
 #include "outform.h"
 #include "outlib.h"
 
-#ifdef OF_OBJ
+#if defined(OF_OBJ) || defined(OF_OBJ2)
 
 /*
  * outobj.c is divided into two sections.  The first section is low level
@@ -67,7 +35,7 @@
  */
 
 /*
- * These routines are built around the ObjRecord data struture.  An ObjRecord
+ * These routines are built around the ObjRecord data structure.  An ObjRecord
  * holds an object file record that may be under construction or complete.
  *
  * A major function of these routines is to support continuation of an obj
@@ -197,12 +165,12 @@ static ObjRecord *obj_clear(ObjRecord * orp)
     orp->child = NULL;
     orp->up = NULL;
     orp->back = NULL;
-    return (orp);
+    return orp;
 }
 
 /*
  * Emit an ObjRecord structure.  (Never reallocates).
- * The record is written out preceeded (recursively) by its previous part (if
+ * The record is written out proceeded (recursively) by its previous part (if
  * any) and followed (recursively) by its child (if any).
  * The previous part and the child are freed.  The main ObjRecord is cleared,
  * not freed.
@@ -222,7 +190,7 @@ static ObjRecord *obj_emit(ObjRecord * orp)
         nasm_free(orp->child);
     }
 
-    return (obj_clear(orp));
+    return obj_clear(orp);
 }
 
 /*
@@ -231,7 +199,7 @@ static ObjRecord *obj_emit(ObjRecord * orp)
 static ObjRecord *obj_emit2(ObjRecord * orp)
 {
     obj_commit(orp);
-    return (obj_emit(orp));
+    return obj_emit(orp);
 }
 
 /*
@@ -243,13 +211,13 @@ static ObjRecord *obj_new(void)
 
     orp = obj_clear(nasm_malloc(sizeof(ObjRecord)));
     orp->ori = ori_null;
-    return (orp);
+    return orp;
 }
 
 /*
  * Advance to the next record because the existing one is full or its x_size
  * is incompatible.
- * Any uncommited data is moved into the next record.
+ * Any uncommitted data is moved into the next record.
  */
 static ObjRecord *obj_bump(ObjRecord * orp)
 {
@@ -276,7 +244,7 @@ static ObjRecord *obj_bump(ObjRecord * orp)
         nxt->used = nxt->committed + used;
     }
 
-    return (nxt);
+    return nxt;
 }
 
 /*
@@ -293,17 +261,17 @@ static ObjRecord *obj_check(ObjRecord * orp, int size)
         orp->committed = orp->used;
     }
 
-    return (orp);
+    return orp;
 }
 
 /*
- * All data written so far is commited to the current record (won't be moved to
+ * All data written so far is committed to the current record (won't be moved to
  * the next record in case of continuation).
  */
 static ObjRecord *obj_commit(ObjRecord * orp)
 {
     orp->committed = orp->used;
-    return (orp);
+    return orp;
 }
 
 /*
@@ -314,7 +282,7 @@ static ObjRecord *obj_byte(ObjRecord * orp, uint8_t val)
     orp = obj_check(orp, 1);
     orp->buf[orp->used] = val;
     orp->used++;
-    return (orp);
+    return orp;
 }
 
 /*
@@ -326,7 +294,7 @@ static ObjRecord *obj_word(ObjRecord * orp, unsigned int val)
     orp->buf[orp->used] = val;
     orp->buf[orp->used + 1] = val >> 8;
     orp->used += 2;
-    return (orp);
+    return orp;
 }
 
 /*
@@ -338,7 +306,7 @@ static ObjRecord *obj_rword(ObjRecord * orp, unsigned int val)
     orp->buf[orp->used] = val >> 8;
     orp->buf[orp->used + 1] = val;
     orp->used += 2;
-    return (orp);
+    return orp;
 }
 
 /*
@@ -352,7 +320,7 @@ static ObjRecord *obj_dword(ObjRecord * orp, uint32_t val)
     orp->buf[orp->used + 2] = val >> 16;
     orp->buf[orp->used + 3] = val >> 24;
     orp->used += 4;
-    return (orp);
+    return orp;
 }
 
 /*
@@ -370,7 +338,7 @@ static ObjRecord *obj_force(ObjRecord * orp, int x)
     if (orp->x_size == (x ^ 48))
         orp = obj_bump(orp);
     orp->x_size = x;
-    return (orp);
+    return orp;
 }
 
 /*
@@ -389,7 +357,7 @@ static ObjRecord *obj_x(ObjRecord * orp, uint32_t val)
 	return nxt;
     }
     orp->x_size = 16;
-    return (obj_word(orp, val));
+    return obj_word(orp, val);
 }
 
 /*
@@ -398,8 +366,8 @@ static ObjRecord *obj_x(ObjRecord * orp, uint32_t val)
 static ObjRecord *obj_index(ObjRecord * orp, unsigned int val)
 {
     if (val < 128)
-        return (obj_byte(orp, val));
-    return (obj_word(orp, (val >> 8) | (val << 8) | 0x80));
+        return obj_byte(orp, val);
+    return obj_word(orp, (val >> 8) | (val << 8) | 0x80);
 }
 
 /*
@@ -408,15 +376,15 @@ static ObjRecord *obj_index(ObjRecord * orp, unsigned int val)
 static ObjRecord *obj_value(ObjRecord * orp, uint32_t val)
 {
     if (val <= 128)
-        return (obj_byte(orp, val));
+        return obj_byte(orp, val);
     if (val <= 0xFFFF) {
         orp = obj_byte(orp, 129);
-        return (obj_word(orp, val));
+        return obj_word(orp, val);
     }
     if (val <= 0xFFFFFF)
-        return (obj_dword(orp, (val << 8) + 132));
+        return obj_dword(orp, (val << 8) + 132);
     orp = obj_byte(orp, 136);
-    return (obj_dword(orp, val));
+    return obj_dword(orp, val);
 }
 
 /*
@@ -426,6 +394,12 @@ static ObjRecord *obj_name(ObjRecord * orp, const char *name)
 {
     int len = strlen(name);
     uint8_t *ptr;
+
+    if (len > UINT8_MAX) {
+        nasm_warn(WARN_OTHER, "truncating object name `%.64s...' to %u bytes",
+                  name, UINT8_MAX);
+        len = UINT8_MAX;
+    }
 
     orp = obj_check(orp, len + 1);
     ptr = orp->buf + orp->used;
@@ -437,7 +411,7 @@ static ObjRecord *obj_name(ObjRecord * orp, const char *name)
             name++;
     } else
         memcpy(ptr, name, len);
-    return (orp);
+    return orp;
 }
 
 /*
@@ -577,9 +551,11 @@ static struct Segment {
     char *name;
     int32_t index;                 /* the NASM segment id */
     int32_t obj_index;             /* the OBJ-file segment index */
-    struct Group *grp;          /* the group it beint32_ts to */
+    struct Group *grp;             /* the group it beint32_ts to */
     uint32_t currentpos;
-    int32_t align;                 /* can be SEG_ABS + absolute addr */
+    int32_t align;                /* can be SEG_ABS + absolute addr */
+    uint64_t origalign;           /* originally requested alignment */
+    int64_t pass_last_seen;
     struct Public *pubhead, **pubtail, *lochead, **loctail;
     char *segclass, *overlay;   /* `class' is a C++ keyword :-) */
     ObjRecord *orp;
@@ -626,6 +602,11 @@ static struct ExpDef {
 #define EXPDEF_FLAG_NODATA   0x20
 #define EXPDEF_MASK_PARMCNT  0x1F
 
+struct SegmentToClass {
+    const char *segment;        /* segment  */
+    const char *segclass;       /* class    */
+};
+
 static int32_t obj_entry_seg, obj_entry_ofs;
 
 const struct ofmt of_obj;
@@ -634,9 +615,44 @@ static const struct dfmt borland_debug_form;
 /* The current segment */
 static struct Segment *current_seg;
 
-static int32_t obj_segment(char *, int, int *);
+/* Name for segment to use if no segment directive is defined */
+static char DEFAULT_SEG[] = "__NASMDEFSEG";
+
+/* Conversion table from known segments to default classes */
+static const struct SegmentToClass conv_table[] = {
+    /* known segments,  default class */
+    { "CODE",           "CODE"  },
+    { "TEXT",           "CODE"  },
+    { "CONST",          "CONST" },
+    { "DATA",           "DATA"  },
+    { "BSS",            "BSS"   },
+    { "STACK",          "STACK" },
+    { "CODE32",         "CODE"  },
+    { "TEXT32",         "CODE"  },
+    { "CONST32",        "CONST" },
+    { "DATA32",         "DATA"  },
+    { "BSS32",          "BSS"   },
+    { "STACK32",        "STACK" },
+    { NULL,             NULL    },
+};
+
+static int32_t obj_segment(char *, int *);
 static void obj_write_file(void);
-static enum directive_result obj_directive(enum directive, char *, int);
+static enum directive_result obj_directive(enum directive, char *);
+
+static const char *get_default_class(const char *segment)
+{
+    const struct SegmentToClass *conv;
+
+    if (segment && segment[0]) {
+        for (conv = conv_table; conv->segment; conv++) {
+            if (!strcmp(segment, conv->segment))
+                return conv->segclass;
+        }
+    }
+
+    return NULL;
+}
 
 static void obj_init(void)
 {
@@ -664,6 +680,21 @@ static void obj_init(void)
     obj_use32 = false;
     passtwo = 0;
     current_seg = NULL;
+
+    /*
+     * Convert known Unix sections to OMF segments via macros.
+     */
+    if (ofmt == &of_obj2) {
+        char section_text[]   = ".text=TEXT32";
+        char section_rodata[] = ".rodata=CONST32";
+        char section_data[]   = ".data=DATA32";
+        char section_bss[]    = ".bss=BSS32";
+
+        pp_pre_define(section_text);
+        pp_pre_define(section_rodata);
+        pp_pre_define(section_data);
+        pp_pre_define(section_bss);
+    }
 }
 
 static void obj_cleanup(void)
@@ -773,11 +804,8 @@ static void obj_deflabel(char *name, int32_t segment,
     int i;
     bool used_special = false;   /* have we used the special text? */
 
-#if defined(DEBUG) && DEBUG>2
-    nasm_error(ERR_DEBUG,
-            " obj_deflabel: %s, seg=%"PRIx32", off=%"PRIx64", is_global=%d, %s\n",
-            name, segment, offset, is_global, special);
-#endif
+    nasm_debug(2, " obj_deflabel: %s, seg=%"PRIx32", off=%"PRIx64", is_global=%d, %s\n",
+               name, segment, offset, is_global, special);
 
     /*
      * If it's a special-retry from pass two, discard it.
@@ -795,7 +823,7 @@ static void obj_deflabel(char *name, int32_t segment,
             obj_entry_ofs = offset;
             return;
         }
-        nasm_error(ERR_NONFATAL, "unrecognised special symbol `%s'", name);
+        nasm_nonfatal("unrecognised special symbol `%s'", name);
     }
 
     /*
@@ -826,8 +854,8 @@ static void obj_deflabel(char *name, int32_t segment,
             pub->segment = (segment == NO_SEG ? 0 : segment & ~SEG_ABS);
         }
         if (special)
-            nasm_error(ERR_NONFATAL, "OBJ supports no special symbol features"
-                  " for this symbol type");
+            nasm_nonfatal("OBJ supports no special symbol features"
+                          " for this symbol type");
         return;
     }
 
@@ -837,8 +865,8 @@ static void obj_deflabel(char *name, int32_t segment,
      * `first_seg'.
      */
     if (!any_segs && segment == first_seg) {
-        int tempint;            /* ignored */
-        if (segment != obj_segment("__NASMDEFSEG", 2, &tempint))
+        int tempint = 0;
+        if (segment != obj_segment(DEFAULT_SEG, &tempint))
             nasm_panic("strange segment conditions in OBJ driver");
     }
 
@@ -855,9 +883,8 @@ static void obj_deflabel(char *name, int32_t segment,
             loc->offset = offset;
 
             if (special)
-                nasm_error(ERR_NONFATAL,
-                      "OBJ supports no special symbol features"
-                      " for this symbol type");
+                nasm_nonfatal("OBJ supports no special symbol features"
+                              " for this symbol type");
             return;
         }
 
@@ -922,8 +949,8 @@ static void obj_deflabel(char *name, int32_t segment,
             obj_ext_set_defwrt(ext, p);
             special += len;
             if (*special && *special != ':')
-                nasm_error(ERR_NONFATAL, "`:' expected in special symbol"
-                      " text for `%s'", ext->name);
+                nasm_nonfatal("`:' expected in special symbol"
+                              " text for `%s'", ext->name);
             else if (*special == ':')
                 special++;
         }
@@ -936,18 +963,16 @@ static void obj_deflabel(char *name, int32_t segment,
             if (ext->commonsize)
                 ext->commonelem = 1;
             else
-                nasm_error(ERR_NONFATAL,
-                      "`%s': `far' keyword may only be applied"
-                      " to common variables\n", ext->name);
+                nasm_nonfatal("`%s': `far' keyword may only be applied"
+                              " to common variables\n", ext->name);
             special += 3;
             special += strspn(special, " \t");
         } else if (!nasm_strnicmp(special, "near", 4)) {
             if (ext->commonsize)
                 ext->commonelem = 0;
             else
-                nasm_error(ERR_NONFATAL,
-                      "`%s': `far' keyword may only be applied"
-                      " to common variables\n", ext->name);
+                nasm_nonfatal("`%s': `far' keyword may only be applied"
+                              " to common variables\n", ext->name);
             special += 4;
             special += strspn(special, " \t");
         }
@@ -965,22 +990,20 @@ static void obj_deflabel(char *name, int32_t segment,
                 expr *e;
                 struct tokenval tokval;
 
-                stdscan_reset();
-                stdscan_set(special);
+                stdscan_reset(special);
                 tokval.t_type = TOKEN_INVALID;
                 e = evaluate(stdscan, NULL, &tokval, NULL, 1, NULL);
                 if (e) {
                     if (!is_simple(e))
-                        nasm_error(ERR_NONFATAL, "cannot use relocatable"
-                              " expression as common-variable element size");
+                        nasm_nonfatal("cannot use relocatable"
+                                      " expression as common-variable element size");
                     else
                         ext->commonelem = reloc_value(e);
                 }
-                special = stdscan_get();
+                special = stdscan_tell();
             } else {
-                nasm_error(ERR_NONFATAL,
-                      "`%s': element-size specifications only"
-                      " apply to common variables", ext->name);
+                nasm_nonfatal("`%s': element-size specifications only"
+                              " apply to common variables", ext->name);
                 while (*special && *special != ':')
                     special++;
                 if (*special == ':')
@@ -1010,8 +1033,8 @@ static void obj_deflabel(char *name, int32_t segment,
     ext->index = ++externals;
 
     if (special && !used_special)
-        nasm_error(ERR_NONFATAL, "OBJ supports no special symbol features"
-              " for this symbol type");
+        nasm_nonfatal("OBJ supports no special symbol features"
+                      " for this symbol type");
 }
 
 /* forward declaration */
@@ -1019,10 +1042,9 @@ static void obj_write_fixup(ObjRecord * orp, int bytes,
                             int segrel, int32_t seg, int32_t wrt,
                             struct Segment *segto);
 
-static void obj_out(int32_t segto, const void *data,
-		    enum out_type type, uint64_t size,
-                    int32_t segment, int32_t wrt)
+static void obj_out(const struct out_data *out)
 {
+    OUT_LEGACY(out,segto,data,type,size,segment,wrt);
     const uint8_t *ucdata;
     int32_t ldata;
     struct Segment *seg;
@@ -1033,13 +1055,13 @@ static void obj_out(int32_t segto, const void *data,
      * segment.
      */
     if (!any_segs) {
-        int tempint;            /* ignored */
-        if (segto != obj_segment("__NASMDEFSEG", 2, &tempint))
+        int tempint = 0;
+        if (segto != obj_segment(DEFAULT_SEG, &tempint))
             nasm_panic("strange segment conditions in OBJ driver");
     }
 
     /*
-     * Find the segment we are targetting.
+     * Find the segment we are targeting.
      */
     for (seg = seghead; seg; seg = seg->next)
         if (seg->index == segto)
@@ -1079,11 +1101,11 @@ static void obj_out(int32_t segto, const void *data,
             size = abs((int)size);
 
         if (segment == NO_SEG && type != OUT_ADDRESS)
-            nasm_error(ERR_NONFATAL, "relative call to absolute address not"
-                  " supported by OBJ format");
+            nasm_nonfatal("relative call to absolute address not"
+                          " supported by OBJ format");
         if (segment >= SEG_ABS)
-            nasm_error(ERR_NONFATAL, "far-absolute relocations not supported"
-                  " by OBJ format");
+            nasm_nonfatal("far-absolute relocations not supported"
+                          " by OBJ format");
 
         ldata = *(int64_t *)data;
         if (type != OUT_ADDRESS) {
@@ -1128,8 +1150,8 @@ static void obj_out(int32_t segto, const void *data,
 
 	switch (size) {
 	default:
-	    nasm_error(ERR_NONFATAL, "OBJ format can only handle 16- or "
-		       "32-byte relocations");
+            nasm_nonfatal("OBJ format can only handle 16- or "
+                          "32-byte relocations");
 	    segment = NO_SEG;	/* Don't actually generate a relocation */
 	    break;
 	case 2:
@@ -1152,8 +1174,8 @@ static void obj_out(int32_t segto, const void *data,
              */
             rsize = 2;
             if (ldata & 0xFFFF)
-                nasm_error(ERR_NONFATAL, "OBJ format cannot handle complex"
-                      " dword-size segment base references");
+                nasm_nonfatal("OBJ format cannot handle complex"
+                              " dword-size segment base references");
         }
         if (segment != NO_SEG)
             obj_write_fixup(orp, rsize,
@@ -1164,8 +1186,7 @@ static void obj_out(int32_t segto, const void *data,
     }
 
     default:
-	nasm_error(ERR_NONFATAL,
-		   "Relocation type not supported by output format");
+        nasm_nonfatal("Relocation type not supported by output format");
 	/* fall through */
 
     case OUT_RESERVE:
@@ -1191,8 +1212,8 @@ static void obj_write_fixup(ObjRecord * orp, int bytes,
     ObjRecord *forp;
 
     if (bytes != 2 && bytes != 4) {
-        nasm_error(ERR_NONFATAL, "`obj' output driver does not support"
-		   " %d-bit relocations", bytes << 3);
+        nasm_nonfatal("`obj' output driver does not support"
+                      " %d-bit relocations", bytes << 3);
         return;
     }
 
@@ -1282,8 +1303,8 @@ static void obj_write_fixup(ObjRecord * orp, int bytes,
             else if (e->defwrt_type == DEFWRT_GROUP)
                 method |= 0x10, fidx = e->defwrt_ptr.grp->obj_index;
             else {
-                nasm_error(ERR_NONFATAL, "default WRT specification for"
-                      " external `%s' unresolved", e->name);
+                nasm_nonfatal("default WRT specification for"
+                              " external `%s' unresolved", e->name);
                 method |= 0x50, fidx = -1;      /* got to do _something_ */
             }
         } else
@@ -1329,7 +1350,35 @@ static void obj_write_fixup(ObjRecord * orp, int bytes,
     obj_commit(forp);
 }
 
-static int32_t obj_segment(char *name, int pass, int *bits)
+static uint32_t check_segment_alignment(const uint64_t origalign)
+{
+    /* Supported alignment values */
+    const uint32_t alignments = 1 | 2 | 4 | 16 | 256 | 4096;
+    uint32_t align = origalign;
+
+    if (origalign &&
+        (!is_power2(origalign) || origalign > alignments)) {
+        nasm_nonfatal("invalid alignment value %"PRIu64, origalign);
+        return 1;
+    }
+
+    if (align == 0)
+        align = 1;
+
+    if (align & alignments)
+        return align;           /* All good! */
+
+    while (!(align & alignments))
+        align <<= 1;
+
+    nasm_warn(WARN_SECTION_ALIGNMENT_ROUNDED,
+              "alignment of %"PRIu64" not supported, using %"PRIu32,
+              origalign, align);
+
+    return align;
+}
+
+static int32_t obj_segment(char *name, int *bits)
 {
     /*
      * We call the label manager here to define a name for the new
@@ -1338,10 +1387,8 @@ static int32_t obj_segment(char *name, int pass, int *bits)
      * using the pointer it gets passed. That way we save memory,
      * by sponging off the label manager.
      */
-#if defined(DEBUG) && DEBUG>=3
-    nasm_error(ERR_DEBUG, " obj_segment: < %s >, pass=%d, *bits=%d\n",
-            name, pass, *bits);
-#endif
+    nasm_debug(3, " obj_segment: < %s >, *bits=%d\n", name, *bits);
+
     if (!name) {
         *bits = 16;
         current_seg = NULL;
@@ -1350,34 +1397,19 @@ static int32_t obj_segment(char *name, int pass, int *bits)
         struct Segment *seg;
         struct Group *grp;
         struct External **extp;
-        int obj_idx, i, attrs;
+        int obj_idx, i;
 	bool rn_error;
         char *p;
 
         /*
          * Look for segment attributes.
          */
-        attrs = 0;
         while (*name == '.')
             name++;             /* hack, but a documented one */
-        p = name;
-        while (*p && !nasm_isspace(*p))
-            p++;
+        p = nasm_skip_word(name);
         if (*p) {
             *p++ = '\0';
-            while (*p && nasm_isspace(*p))
-                *p++ = '\0';
-        }
-        while (*p) {
-            while (*p && !nasm_isspace(*p))
-                p++;
-            if (*p) {
-                *p++ = '\0';
-                while (*p && nasm_isspace(*p))
-                    *p++ = '\0';
-            }
-
-            attrs++;
+            p = nasm_skip_spaces(p);
         }
 
         for (seg = seghead, obj_idx = 1; ; seg = seg->next, obj_idx++) {
@@ -1385,14 +1417,22 @@ static int32_t obj_segment(char *name, int pass, int *bits)
                 break;
 
             if (!strcmp(seg->name, name)) {
-                if (attrs > 0 && pass == 1)
-                    nasm_error(ERR_WARNING, "segment attributes specified on"
-                          " redeclaration of segment: ignoring");
+                if (seg->pass_last_seen == pass_count()) {
+                    if (*p)
+                        nasm_warn(WARN_OTHER, "segment attributes specified on"
+                                  " redeclaration of segment: ignoring");
+                } else {
+                    /* Reissue alignment warning on this pass if necessary */
+                    if (seg->align < SEG_ABS)
+                        check_segment_alignment(seg->origalign);
+                }
+
                 if (seg->use32)
                     *bits = 32;
                 else
                     *bits = 16;
                 current_seg = seg;
+                seg->pass_last_seen = pass_count();
                 return seg->index;
             }
         }
@@ -1406,8 +1446,15 @@ static int32_t obj_segment(char *name, int pass, int *bits)
         any_segs = true;
         seg->name = nasm_strdup(name);
         seg->currentpos = 0;
-        seg->align = 1;         /* default */
-        seg->use32 = false;     /* default */
+        if (ofmt == &of_obj) {
+            seg->align = 1;         /* default for obj */
+            seg->origalign = 1;     /* default for obj */
+            seg->use32 = false;     /* default for obj */
+        } else {
+            seg->align = 16;        /* default for obj2 */
+            seg->origalign = 16;    /* default for obj2 */
+            seg->use32 = true;      /* default for obj2 */
+        }
         seg->combine = CMB_PUBLIC;      /* default */
         seg->segclass = seg->overlay = NULL;
         seg->pubhead = NULL;
@@ -1423,28 +1470,30 @@ static int32_t obj_segment(char *name, int pass, int *bits)
         /*
          * Process the segment attributes.
          */
-        p = name;
-        while (attrs--) {
-            p += strlen(p);
-            while (!*p)
-                p++;
+        while (*p) {
+            const char *q = p;
+            p = nasm_skip_word(p);
+            if (*p) {
+                *p++ = '\0';
+                p = nasm_skip_spaces(p);
+            }
 
             /*
              * `p' contains a segment attribute.
              */
-            if (!nasm_stricmp(p, "private"))
+            if (!nasm_stricmp(q, "private"))
                 seg->combine = CMB_PRIVATE;
-            else if (!nasm_stricmp(p, "public"))
+            else if (!nasm_stricmp(q, "public"))
                 seg->combine = CMB_PUBLIC;
-            else if (!nasm_stricmp(p, "common"))
+            else if (!nasm_stricmp(q, "common"))
                 seg->combine = CMB_COMMON;
-            else if (!nasm_stricmp(p, "stack"))
+            else if (!nasm_stricmp(q, "stack"))
                 seg->combine = CMB_STACK;
-            else if (!nasm_stricmp(p, "use16"))
+            else if (!nasm_stricmp(q, "use16"))
                 seg->use32 = false;
-            else if (!nasm_stricmp(p, "use32"))
+            else if (!nasm_stricmp(q, "use32"))
                 seg->use32 = true;
-            else if (!nasm_stricmp(p, "flat")) {
+            else if (!nasm_stricmp(q, "flat")) {
                 /*
                  * This segment is an OS/2 FLAT segment. That means
                  * that its default group is group FLAT, even if
@@ -1461,7 +1510,7 @@ static int32_t obj_segment(char *name, int pass, int *bits)
                     if (!strcmp(grp->name, "FLAT"))
                         break;
                 if (!grp) {
-                    obj_directive(D_GROUP, "FLAT", 1);
+                    obj_directive(D_GROUP, "FLAT");
                     for (grp = grphead; grp; grp = grp->next)
                         if (!strcmp(grp->name, "FLAT"))
                             break;
@@ -1469,70 +1518,77 @@ static int32_t obj_segment(char *name, int pass, int *bits)
                         nasm_panic("failure to define FLAT?!");
                 }
                 seg->grp = grp;
-            } else if (!nasm_strnicmp(p, "class=", 6))
-                seg->segclass = nasm_strdup(p + 6);
-            else if (!nasm_strnicmp(p, "overlay=", 8))
-                seg->overlay = nasm_strdup(p + 8);
-            else if (!nasm_strnicmp(p, "align=", 6)) {
-                seg->align = readnum(p + 6, &rn_error);
+            } else if (!nasm_strnicmp(q, "class=", 6))
+                seg->segclass = nasm_strdup(q + 6);
+            else if (!nasm_strnicmp(q, "overlay=", 8))
+                seg->overlay = nasm_strdup(q + 8);
+            else if (!nasm_strnicmp(q, "align=", 6)) {
+                uint64_t n = readnum(q + 6, &rn_error);
                 if (rn_error) {
-                    seg->align = 1;
-                    nasm_error(ERR_NONFATAL, "segment alignment should be"
-                          " numeric");
+                    nasm_nonfatal("segment alignment should be numeric");
+                    n = 1;
                 }
-                switch (seg->align) {
-                case 1:        /* BYTE */
-                case 2:        /* WORD */
-                case 4:        /* DWORD */
-                case 16:       /* PARA */
-                case 256:      /* PAGE */
-                case 4096:     /* PharLap extension */
-                    break;
-                case 8:
-                    nasm_error(ERR_WARNING,
-                          "OBJ format does not support alignment"
-                          " of 8: rounding up to 16");
-                    seg->align = 16;
-                    break;
-                case 32:
-                case 64:
-                case 128:
-                    nasm_error(ERR_WARNING,
-                          "OBJ format does not support alignment"
-                          " of %d: rounding up to 256", seg->align);
-                    seg->align = 256;
-                    break;
-                case 512:
-                case 1024:
-                case 2048:
-                    nasm_error(ERR_WARNING,
-                          "OBJ format does not support alignment"
-                          " of %d: rounding up to 4096", seg->align);
-                    seg->align = 4096;
-                    break;
-                default:
-                    nasm_error(ERR_NONFATAL, "invalid alignment value %d",
-                          seg->align);
-                    seg->align = 1;
-                    break;
+                seg->origalign = n;
+                seg->align = check_segment_alignment(n);
+            } else if (!nasm_strnicmp(q, "absolute=", 9)) {
+                uint64_t n = readnum(q + 9, &rn_error);
+                if (rn_error) {
+                    nasm_nonfatal("argument to `absolute' segment"
+                                  " attribute should be numeric");
+                    n = 0;
+                } else if (n >= SEG_ABS) {
+                    /* Probably could even be max 64K? */
+                    nasm_nonfatal("unsupported `absolute' segment number %#"PRIx64, n);
+                    n = 0;
                 }
-            } else if (!nasm_strnicmp(p, "absolute=", 9)) {
-                seg->align = SEG_ABS + readnum(p + 9, &rn_error);
-                if (rn_error)
-                    nasm_error(ERR_NONFATAL, "argument to `absolute' segment"
-                          " attribute should be numeric");
+                seg->align = SEG_ABS + n;
+            }
+        }
+
+        if (!seg->use32 && seg->grp && !strcmp(seg->grp->name, "FLAT"))
+           nasm_panic("wrong combination of USE16(16-bit segment) and FLAT");
+
+        if (ofmt == &of_obj2) {
+            if (seg->use32 && !seg->grp) {
+                struct Group *grp;
+                for (grp = grphead; grp; grp = grp->next)
+                    if (!strcmp(grp->name, "FLAT"))
+                        break;
+                if (!grp) {
+                    obj_directive(D_GROUP, "FLAT");
+                    for (grp = grphead; grp; grp = grp->next)
+                        if (!strcmp(grp->name, "FLAT"))
+                            break;
+                    if (!grp)
+                        nasm_panic("failure to define FLAT?!");
+                }
+                seg->grp = grp;
+            }
+
+            if (!seg->segclass) {
+                const char *segclass = get_default_class(seg->name);
+
+                if (segclass)
+                    seg->segclass = nasm_strdup(segclass);
             }
         }
 
         /* We need to know whenever we have at least one 32-bit segment */
         obj_use32 |= seg->use32;
 
-        obj_seg_needs_update = seg;
-        if (seg->align >= SEG_ABS)
-            define_label(name, NO_SEG, seg->align - SEG_ABS, false);
-        else
-            define_label(name, seg->index + 1, 0L, false);
-        obj_seg_needs_update = NULL;
+        /*
+         * Trying to create a symbol on the last pass will end in tears.
+         * This can happen if there is no SEGMENT directive, and there
+         * are no labels.
+         */
+        if (!pass_final()) {
+            obj_seg_needs_update = seg;
+            if (seg->align >= SEG_ABS)
+                define_label(name, NO_SEG, seg->align - SEG_ABS, false);
+            else
+                define_label(name, seg->index + 1, 0L, false);
+            obj_seg_needs_update = NULL;
+        }
 
         /*
          * See if this segment is defined in any groups.
@@ -1543,11 +1599,15 @@ static int32_t obj_segment(char *name, int pass, int *bits)
                     nasm_free(grp->segs[i].name);
                     grp->segs[i] = grp->segs[grp->nindices];
                     grp->segs[grp->nindices++].index = seg->obj_index;
-                    if (seg->grp)
-                        nasm_error(ERR_WARNING,
-				   "segment `%s' is already part of"
-				   " a group: first one takes precedence",
-				   seg->name);
+                    /*
+                     * The group FLAT is a pseudo group. Therefore, it is
+                     * allowed to redefine a segment in the group FLAT as
+                     * other group.
+                     */
+                    if (seg->grp && strcmp(seg->grp->name, "FLAT"))
+                        nasm_warn(WARN_OTHER, "segment `%s' is already part of"
+                                  " a group: first one takes precedence",
+                                  seg->name);
                     else
                         seg->grp = grp;
                 }
@@ -1581,17 +1641,19 @@ static int32_t obj_segment(char *name, int pass, int *bits)
 }
 
 static enum directive_result
-obj_directive(enum directive directive, char *value, int pass)
+obj_directive(enum directive directive, char *value)
 {
     switch (directive) {
     case D_GROUP:
-    {
-        char *p, *q, *v;
-        if (pass == 1) {
+        /* Is pass_first() really correct? */
+        if (value && pass_first()) {
+            char *p, *q, *v;
             struct Group *grp;
             struct Segment *seg;
             struct External **extp;
             int obj_idx;
+            const char *segname;
+            int i;
 
             q = value;
             while (*q == '.')
@@ -1620,22 +1682,23 @@ obj_directive(enum directive directive, char *value, int pass)
             for (grp = grphead; grp; grp = grp->next) {
                 obj_idx++;
                 if (!strcmp(grp->name, v)) {
-                    nasm_error(ERR_NONFATAL, "group `%s' defined twice", v);
-                    return DIRR_ERROR;
+                    break;
                 }
             }
 
-            *grptail = grp = nasm_malloc(sizeof(*grp));
-            grp->next = NULL;
-            grptail = &grp->next;
-            grp->index = seg_alloc();
-            grp->obj_index = obj_idx;
-            grp->nindices = grp->nentries = 0;
-            grp->name = NULL;
+            if (!grp) {
+                *grptail = grp = nasm_malloc(sizeof(*grp));
+                grp->next = NULL;
+                grptail = &grp->next;
+                grp->index = seg_alloc();
+                grp->obj_index = obj_idx;
+                grp->nindices = grp->nentries = 0;
+                grp->name = NULL;
 
-            obj_grp_needs_update = grp;
-            backend_label(v, grp->index + 1, 0L);
-            obj_grp_needs_update = NULL;
+                obj_grp_needs_update = grp;
+                backend_label(v, grp->index + 1, 0L);
+                obj_grp_needs_update = NULL;
+            }
 
             while (*q) {
                 p = q;
@@ -1649,6 +1712,30 @@ obj_directive(enum directive directive, char *value, int pass)
                 /*
                  * Now p contains a segment name. Find it.
                  */
+                for (i = 0; i < grp->nentries; i++) {
+                    if (i < grp->nindices) {
+                        segname = NULL;     /* make compiler happy */
+                        for (seg = seghead; seg; seg = seg->next) {
+                            if (grp->segs[i].index == seg->obj_index) {
+                                segname = seg->name;
+                                break;
+                            }
+                        }
+                    }
+                    else
+                        segname = grp->segs[i].name;
+                    /*
+                     * See if this segment is defined in this group.
+                     */
+                    if (!strcmp(segname, p))
+                        break;
+                }
+                if (i < grp->nentries) {
+                    /*
+                     * We have already this segment. Skip.
+                     */
+                    continue;
+                }
                 for (seg = seghead; seg; seg = seg->next)
                     if (!strcmp(seg->name, p))
                         break;
@@ -1659,11 +1746,15 @@ obj_directive(enum directive directive, char *value, int pass)
                      */
                     grp->segs[grp->nentries++] = grp->segs[grp->nindices];
                     grp->segs[grp->nindices++].index = seg->obj_index;
-                    if (seg->grp)
-                        nasm_error(ERR_WARNING,
-                              "segment `%s' is already part of"
-                              " a group: first one takes precedence",
-                              seg->name);
+                    /*
+                     * The group FLAT is a pseudo group. Therefore, it is
+                     * allowed to redefine a segment in the group FLAT as
+                     * other group.
+                     */
+                    if (seg->grp && strcmp(seg->grp->name, "FLAT"))
+                        nasm_warn(WARN_OTHER, "segment `%s' is already part of"
+                                  " a group: first one takes precedence",
+                                  seg->name);
                     else
                         seg->grp = grp;
                 } else {
@@ -1693,95 +1784,18 @@ obj_directive(enum directive directive, char *value, int pass)
             }
         }
         return DIRR_OK;
-    }
+
     case D_UPPERCASE:
-        obj_uppercase = true;
+        if (value)
+            get_boolean_option(value, &obj_uppercase);
         return DIRR_OK;
 
     case D_IMPORT:
-    {
-        char *q, *extname, *libname, *impname;
+        /* Is pass_first() really correct? */
+        if (value && pass_first()) {
+            char *q, *extname, *libname, *impname;
 
-        if (pass == 2)
-            return 1;           /* ignore in pass two */
-        extname = q = value;
-        while (*q && !nasm_isspace(*q))
-            q++;
-        if (nasm_isspace(*q)) {
-            *q++ = '\0';
-            while (*q && nasm_isspace(*q))
-                q++;
-        }
-
-        libname = q;
-        while (*q && !nasm_isspace(*q))
-            q++;
-        if (nasm_isspace(*q)) {
-            *q++ = '\0';
-            while (*q && nasm_isspace(*q))
-                q++;
-        }
-
-        impname = q;
-
-        if (!*extname || !*libname)
-            nasm_error(ERR_NONFATAL, "`import' directive requires symbol name"
-                  " and library name");
-        else {
-            struct ImpDef *imp;
-            bool err = false;
-
-            imp = *imptail = nasm_malloc(sizeof(struct ImpDef));
-            imptail = &imp->next;
-            imp->next = NULL;
-            imp->extname = nasm_strdup(extname);
-            imp->libname = nasm_strdup(libname);
-            imp->impindex = readnum(impname, &err);
-            if (!*impname || err)
-                imp->impname = nasm_strdup(impname);
-            else
-                imp->impname = NULL;
-        }
-
-        return DIRR_OK;
-    }
-    case D_EXPORT:
-    {
-        char *q, *extname, *intname, *v;
-        struct ExpDef *export;
-        int flags = 0;
-        unsigned int ordinal = 0;
-
-        if (pass == 2)
-            return DIRR_OK;     /* ignore in pass two */
-        intname = q = value;
-        while (*q && !nasm_isspace(*q))
-            q++;
-        if (nasm_isspace(*q)) {
-            *q++ = '\0';
-            while (*q && nasm_isspace(*q))
-                q++;
-        }
-
-        extname = q;
-        while (*q && !nasm_isspace(*q))
-            q++;
-        if (nasm_isspace(*q)) {
-            *q++ = '\0';
-            while (*q && nasm_isspace(*q))
-                q++;
-        }
-
-        if (!*intname) {
-            nasm_error(ERR_NONFATAL, "`export' directive requires export name");
-            return DIRR_OK;
-        }
-        if (!*extname) {
-            extname = intname;
-            intname = "";
-        }
-        while (*q) {
-            v = q;
+            extname = q = value;
             while (*q && !nasm_isspace(*q))
                 q++;
             if (nasm_isspace(*q)) {
@@ -1789,40 +1803,114 @@ obj_directive(enum directive directive, char *value, int pass)
                 while (*q && nasm_isspace(*q))
                     q++;
             }
-            if (!nasm_stricmp(v, "resident"))
-                flags |= EXPDEF_FLAG_RESIDENT;
-            else if (!nasm_stricmp(v, "nodata"))
-                flags |= EXPDEF_FLAG_NODATA;
-            else if (!nasm_strnicmp(v, "parm=", 5)) {
+
+            libname = q;
+            while (*q && !nasm_isspace(*q))
+                q++;
+            if (nasm_isspace(*q)) {
+                *q++ = '\0';
+                while (*q && nasm_isspace(*q))
+                    q++;
+            }
+
+            impname = q;
+
+            if (!*extname || !*libname)
+                nasm_nonfatal("`import' directive requires symbol name"
+                              " and library name");
+            else {
+                struct ImpDef *imp;
                 bool err = false;
-                flags |= EXPDEF_MASK_PARMCNT & readnum(v + 5, &err);
-                if (err) {
-                    nasm_error(ERR_NONFATAL,
-                          "value `%s' for `parm' is non-numeric", v + 5);
-                    return DIRR_ERROR;
-                }
-            } else {
-                bool err = false;
-                ordinal = readnum(v, &err);
-                if (err) {
-                    nasm_error(ERR_NONFATAL,
-                          "unrecognised export qualifier `%s'", v);
-                    return DIRR_ERROR;
-                }
-                flags |= EXPDEF_FLAG_ORDINAL;
+
+                imp = *imptail = nasm_malloc(sizeof(struct ImpDef));
+                imptail = &imp->next;
+                imp->next = NULL;
+                imp->extname = nasm_strdup(extname);
+                imp->libname = nasm_strdup(libname);
+                imp->impindex = readnum(impname, &err);
+                if (!*impname || err)
+                    imp->impname = nasm_strdup(impname);
+                else
+                    imp->impname = NULL;
             }
         }
-
-        export = *exptail = nasm_malloc(sizeof(struct ExpDef));
-        exptail = &export->next;
-        export->next = NULL;
-        export->extname = nasm_strdup(extname);
-        export->intname = nasm_strdup(intname);
-        export->ordinal = ordinal;
-        export->flags = flags;
-
         return DIRR_OK;
-    }
+
+    case D_EXPORT:
+        /* Is pass_first() really correct? */
+        if (value && pass_first()) {
+            char *q, *extname, *intname, *v;
+            struct ExpDef *export;
+            int flags = 0;
+            unsigned int ordinal = 0;
+
+            intname = q = value;
+            while (*q && !nasm_isspace(*q))
+                q++;
+            if (nasm_isspace(*q)) {
+                *q++ = '\0';
+                while (*q && nasm_isspace(*q))
+                    q++;
+            }
+
+            extname = q;
+            while (*q && !nasm_isspace(*q))
+                q++;
+            if (nasm_isspace(*q)) {
+                *q++ = '\0';
+                while (*q && nasm_isspace(*q))
+                    q++;
+            }
+
+            if (!*intname) {
+                nasm_nonfatal("`export' directive requires export name");
+                return DIRR_OK;
+            }
+            if (!*extname) {
+                extname = intname;
+                intname = "";
+            }
+            while (*q) {
+                v = q;
+                while (*q && !nasm_isspace(*q))
+                    q++;
+                if (nasm_isspace(*q)) {
+                    *q++ = '\0';
+                    while (*q && nasm_isspace(*q))
+                        q++;
+                }
+                if (!nasm_stricmp(v, "resident"))
+                    flags |= EXPDEF_FLAG_RESIDENT;
+                else if (!nasm_stricmp(v, "nodata"))
+                    flags |= EXPDEF_FLAG_NODATA;
+                else if (!nasm_strnicmp(v, "parm=", 5)) {
+                    bool err = false;
+                    flags |= EXPDEF_MASK_PARMCNT & readnum(v + 5, &err);
+                    if (err) {
+                        nasm_nonfatal("value `%s' for `parm' is non-numeric", v + 5);
+                        return DIRR_ERROR;
+                    }
+                } else {
+                    bool err = false;
+                    ordinal = readnum(v, &err);
+                    if (err) {
+                        nasm_nonfatal("unrecognised export qualifier `%s'", v);
+                        return DIRR_ERROR;
+                    }
+                    flags |= EXPDEF_FLAG_ORDINAL;
+                }
+            }
+
+            export = *exptail = nasm_malloc(sizeof(struct ExpDef));
+            exptail = &export->next;
+            export->next = NULL;
+            export->extname = nasm_strdup(extname);
+            export->intname = nasm_strdup(intname);
+            export->ordinal = ordinal;
+            export->flags = flags;
+        }
+        return DIRR_OK;
+
     default:
 	return DIRR_UNKNOWN;
     }
@@ -1900,8 +1988,8 @@ static int32_t obj_segbase(int32_t segment)
         if (eb) {
             e = eb->exts[i];
 	    if (!e) {
-		nasm_assert(pass0 == 0);
-		/* Not available - can happen during optimization */
+                /* Not available yet, probably a forward reference */
+		nasm_assert(!pass_final());
 		return NO_SEG;
 	    }
 
@@ -1981,14 +2069,14 @@ static void obj_write_file(void)
      */
     orp->type = COMENT;
     obj_rword(orp, dTRANSL);
-    obj_name(orp, nasm_comment);
+    obj_name(orp, nasm_comment());
     obj_emit2(orp);
 
     /*
      * Output file dependency information
      */
-    if (!obj_nodepend) {
-        list_for_each(depfile, depend_list->head) {
+    if (!obj_nodepend && depend_list) {
+        strlist_for_each(depfile, depend_list) {
             uint32_t ts;
 
             ts = obj_file_timestamp(depfile->str);
@@ -2092,8 +2180,8 @@ static void obj_write_file(void)
             /* acbp |= 0x00 */ ;
         else if (seg->align >= 4096) {
             if (seg->align > 4096)
-                nasm_error(ERR_NONFATAL, "segment `%s' requires more alignment"
-                      " than OBJ format supports", seg->name);
+                nasm_nonfatal("segment `%s' requires more alignment"
+                              " than OBJ format supports", seg->name);
             acbp |= 0xC0;       /* PharLap extension */
         } else if (seg->align >= 256) {
             acbp |= 0x80;
@@ -2127,8 +2215,8 @@ static void obj_write_file(void)
 
         if (grp->nindices != grp->nentries) {
             for (i = grp->nindices; i < grp->nentries; i++) {
-                nasm_error(ERR_NONFATAL, "group `%s' contains undefined segment"
-                      " `%s'", grp->name, grp->segs[i].name);
+                nasm_nonfatal("group `%s' contains undefined segment"
+                              " `%s'", grp->name, grp->segs[i].name);
                 nasm_free(grp->segs[i].name);
                 grp->segs[i].name = NULL;
             }
@@ -2350,7 +2438,7 @@ static void obj_write_file(void)
             }
         }
         if (!seg)
-            nasm_error(ERR_NONFATAL, "entry point is not in this module");
+            nasm_nonfatal("entry point is not in this module");
     }
 
     /*
@@ -2515,13 +2603,13 @@ static void dbgbi_linnum(const char *lnfname, int32_t lineno, int32_t segto)
      * segment.
      */
     if (!any_segs) {
-        int tempint;            /* ignored */
-        if (segto != obj_segment("__NASMDEFSEG", 2, &tempint))
+        int tempint = 0;
+        if (segto != obj_segment(DEFAULT_SEG, &tempint))
             nasm_panic("strange segment conditions in OBJ driver");
     }
 
     /*
-     * Find the segment we are targetting.
+     * Find the segment we are targeting.
      */
     for (seg = seghead; seg; seg = seg->next)
         if (seg->index == segto)
@@ -2667,6 +2755,9 @@ static const struct dfmt borland_debug_form = {
     dbgbi_init,
     dbgbi_linnum,
     dbgbi_deflabel,
+    NULL,                       /* .debug_smacros */
+    NULL,                       /* .debug_include */
+    NULL,                       /* .debug_mmacros */
     null_debug_directive,
     dbgbi_typevalue,
     dbgbi_output,
@@ -2685,7 +2776,7 @@ static const struct pragma_facility obj_pragma_list[] = {
 };
 
 const struct ofmt of_obj = {
-    "MS-DOS 16-bit/32-bit OMF object files",
+    "Intel/Microsoft OMF (MS-DOS, OS/2, Win16)",
     "obj",
     ".obj",
     0,
@@ -2695,7 +2786,6 @@ const struct ofmt of_obj = {
     obj_stdmac,
     obj_init,
     null_reset,
-    nasm_do_legacy_output,
     obj_out,
     obj_deflabel,
     obj_segment,
@@ -2706,4 +2796,26 @@ const struct ofmt of_obj = {
     obj_cleanup,
     obj_pragma_list
 };
-#endif                          /* OF_OBJ */
+
+const struct ofmt of_obj2 = {
+    "Intel/Microsoft OMF (i386) (OS/2)",
+    "obj2",
+    ".obj",
+    0,
+    32,
+    borland_debug_arr,
+    &borland_debug_form,
+    obj_stdmac,
+    obj_init,
+    null_reset,
+    obj_out,
+    obj_deflabel,
+    obj_segment,
+    NULL,
+    obj_sectalign,
+    obj_segbase,
+    obj_directive,
+    obj_cleanup,
+    obj_pragma_list
+};
+#endif                          /* OF_OBJ || OF_OBJ2 */
